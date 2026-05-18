@@ -14,13 +14,12 @@ GENIR_DIR="/home/tcetoje/GENIUS-CVPR25"
 MBEIR_DATA_DIR="/fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data"
 IU_XRAY_DIR="/fnwi_fs/ivi/irlab/personal/tcetoje/iu_xray"   # adjust to actual download path
 
-source /home/tcetoje/miniconda3/etc/profile.d/conda.sh
-conda activate genius2
 export PYTHONPATH="$GENIR_DIR/src"
+PYTHON="/home/tcetoje/miniconda3/envs/genius2/bin/python"
 
 cd "$GENIR_DIR/src/data/preprocessing"
 
-python iu_xray.py \
+$PYTHON iu_xray.py \
     --mbeir_data_dir "$MBEIR_DATA_DIR" \
     --iu_xray_dir    "$IU_XRAY_DIR" \
     --enable_candidate_pool \
