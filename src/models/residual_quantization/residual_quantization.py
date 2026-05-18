@@ -206,6 +206,8 @@ class RQ(nn.Module):
                  unique_code=False,
                  modality_index=True):
         super().__init__()
+        # Allow YAML to override the default feature_dim (e.g. 512 for BiomedCLIP)
+        feature_dim = getattr(getattr(config, 'codebook_config', None), 'feature_dim', feature_dim)
         # Initialize CLIP model if provided
         if clip_model is not None:
             self.clip_model = clip_model

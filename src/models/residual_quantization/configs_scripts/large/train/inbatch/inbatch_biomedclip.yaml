@@ -1,0 +1,73 @@
+# Stage 1 — Residual Quantization training with BiomedCLIP (512-dim) embeddings
+# Pre-extracted embeddings must live at the paths below before running.
+# feature_dim: 512 overrides the default 768 in residual_quantization.py
+
+codebook_config:
+  codebook_level: 8
+  codebook_vocab: 4096
+  feature_dim: 512                # BiomedCLIP ViT-B/16 output dim
+  pool_path: extracted_embed/BiomedCLIP/train/cand_pool_mimic_cxr_IT_dict.pt
+  query_path: extracted_embed/BiomedCLIP/train/train_mimic_cxr_IT_dict.pt
+
+data_config:
+  enable_query_instruct: true
+  hard_neg_num: 0
+  image_size: [224, 224]
+  in_batch_neg_num: 0
+  query_instruct_path: instructions/query_instructions.tsv
+  shuffle_cand: true
+  train_cand_pool_path: cand_pool/local/mbeir_mimic_cxr_cand_pool.jsonl
+  train_query_data_path: query/train/mbeir_mimic_cxr_train.jsonl
+  val_cand_pool_path: cand_pool/local/mbeir_mimic_cxr_cand_pool.jsonl
+  val_query_data_path: query/val/mbeir_mimic_cxr_val.jsonl
+
+dataloader_config:
+  num_workers: 4
+  train_batch_size: 512
+  valid_batch_size: 128
+
+dist_config:
+  dist_url: env://
+
+evaluator:
+  enable_eval: false
+  eval_freq: 10
+  eval_start: 20
+  print_freq: 10
+  save_freq: 5
+
+experiment:
+  description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
+  exp_name: InBatch
+  instruct_status: Instruct
+  path_suffix: ${model.short_name}/${model.size}/${experiment.instruct_status}/${experiment.exp_name}/
+
+logger_config:
+  logger_out_dir: logger/${experiment.path_suffix}
+  logger_out_file_name: train.log
+
+model:
+  ckpt_config:
+    ckpt_dir: checkpoint/${experiment.path_suffix}
+    ckpt_name: ''
+    resume_training: false
+  gather_embeddings: true
+  name: rq_biomedclip_large
+  short_name: rq_biomedclip
+  size: Large
+
+seed: 2023
+
+trainer_config:
+  eval_steps: 500
+  gradient_accumulation_steps: 1
+  learning_rate: 1e-4
+  num_train_epochs: 21
+  print_freq: 51
+  warmup_steps: 0
+
+wandb_config:
+  enabled: false
+  experiment_name: ${experiment.description}
+  wandb_key: wandb_key
+  wandb_project: GENIR

@@ -202,7 +202,7 @@ def main(config):
         pretrained_path = os.path.join(config.genir_dir, pretrained_config.pretrained_dir, pretrained_config.pretrained_name)
         assert os.path.exists(pretrained_path), f"Checkpoint file {pretrained_path} does not exist."
         logger.info(f"loading CLIPScoreFusion checkpoint from {pretrained_path}")
-        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'), weights_only=False)
         clip_model.load_state_dict(checkpoint["model"])
 
     ckpt_config = model_config.ckpt_config
@@ -210,7 +210,7 @@ def main(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading GenerativeRetriever checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint["model"], strict=False)
         
     # Move model to GPUs

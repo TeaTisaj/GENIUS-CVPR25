@@ -214,7 +214,7 @@ def main(config):
         checkpoint_path = os.path.join(config.uniir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         logger.info(f"loading CLIPScoreFusion checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scaler.load_state_dict(checkpoint["scaler"])

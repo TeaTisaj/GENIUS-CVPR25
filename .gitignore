@@ -1,2 +1,26 @@
 **/.DS_Store
-/checkpoint/*.pth
+
+# Model checkpoints and large binaries
+checkpoint/
+GENIUS/
+
+# Generated outputs (re-creatable by running the pipeline)
+extracted_embed/
+gen_code/
+retrieval_results/
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Compiled C++ extensions
+*.so
+
+# Installers
+Miniconda3-*.sh
+
+mentor_questions.md
+CLAUDE.md
+cxr_plan.md
+plan_15_05.md

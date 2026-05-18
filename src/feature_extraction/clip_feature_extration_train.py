@@ -85,7 +85,7 @@ def main(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading CLIPScoreFusion checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint["model"])
 
     # Move model to GPUs

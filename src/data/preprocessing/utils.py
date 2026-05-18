@@ -17,6 +17,7 @@ DATASET_IDS = {
     "CIRR": 8,
     "MSCOCO": 9,
     "FLICKR30K": 10,
+    "MIMIC_CXR": 11,
 }
 
 MBEIR_TASK = {
@@ -43,6 +44,7 @@ MBEIR_DATASET_TO_DOMAIN = {
     "CIRR": "common",
     "MSCOCO": "common",
     "FLICKR30K": "common",
+    "MIMIC_CXR": "medical",
 }
 
 IMAGE_SHORT_SIDE = 256  # The shortest side of the image is resized to this size
@@ -184,7 +186,7 @@ def parallel_process_image_directory(images_dir, num_processes=cpu_count()):
     │   │   │   ├── ...
     """
     all_image_paths = []
-    for root, _, files in os.walk(images_dir):
+    for root, _, files in os.walk(images_dir, followlinks=True):
         for file in files:
             if file.lower().endswith((".png", ".jpg", ".jpeg")):
                 all_image_paths.append(os.path.join(root, file))

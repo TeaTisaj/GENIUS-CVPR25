@@ -134,9 +134,10 @@ class T5ForGenerativeRetrieval(nn.Module):
             
         # Initialize model components
         self.config = config
-        self.quantizer = RQ(config=config, clip_model=clip_model)
+        self.feature_dim = getattr(getattr(config, 'codebook_config', None), 'feature_dim', 768)
+        self.quantizer = RQ(config=config, clip_model=clip_model, feature_dim=self.feature_dim)
         rq_model_path = os.path.join(config.genir_dir, config.codebook_config.quantizer_path)
-        self.quantizer.load_state_dict(torch.load(rq_model_path, map_location=torch.device('cpu'))["model"], strict=False)
+        self.quantizer.load_state_dict(torch.load(rq_model_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
         self.quantizer.eval()
         for _, param in self.quantizer.named_parameters():
             param.requires_grad = False
@@ -150,7 +151,7 @@ class T5ForGenerativeRetrieval(nn.Module):
 
         # Initialize embedding projectors
         self.num_prefix = 30
-        self.embed_projector = nn.Sequential(nn.Linear(768, t5_config.d_model * self.num_prefix))
+        self.embed_projector = nn.Sequential(nn.Linear(self.feature_dim, t5_config.d_model * self.num_prefix))
         self.embed_projector.train()
         for _, param in self.embed_projector.named_parameters():
             param.requires_grad = True
@@ -219,7 +220,7 @@ class T5ForGenerativeRetrieval(nn.Module):
 
         # Map codebook vectors to embedding dimension
         embedding_dim = t5_config.d_model
-        linear_layer = nn.Linear(768, embedding_dim, bias=False)
+        linear_layer = nn.Linear(self.feature_dim, embedding_dim, bias=False)
 
         if self.modality_index:
             # Handle modality-specific codebook initialization
@@ -235,7 +236,7 @@ class T5ForGenerativeRetrieval(nn.Module):
             mapped_embeddings = torch.cat([mapped_first_layer_embeddings, mapped_other_layers_embeddings], dim=0)
         else:
             # Handle standard codebook initialization
-            codebook_vectors = self.quantizer.residual_rq.codebooks.reshape(-1, 768)
+            codebook_vectors = self.quantizer.residual_rq.codebooks.reshape(-1, self.feature_dim)
             mapped_embeddings = linear_layer(F.normalize(codebook_vectors))
 
         # Initialize model embeddings

@@ -84,7 +84,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.uniir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading CLIPScoreFusion checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path)["model"], map_location=torch.device('cpu'))
+        model.load_state_dict(torch.load(checkpoint_path, weights_only=False)["model"], map_location=torch.device('cpu'))
 
     elif model_name == "CLIPFeatureFusion":
         from models.uniir_clip.clip_featurefusion.clip_ff import CLIPFeatureFusion
@@ -106,7 +106,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.uniir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading CLIPFeatureFusion checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path)["model"], map_location=torch.device('cpu'))
+        model.load_state_dict(torch.load(checkpoint_path, weights_only=False)["model"], map_location=torch.device('cpu'))
 
     elif model_name == "BLIPScoreFusion":
         from models.uniir_blip.blip_scorefusion.blip_sf import BLIPScoreFusion
@@ -126,7 +126,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.uniir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading BLIPScoreFusion checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path)["model"], map_location=torch.device('cpu'))
+        model.load_state_dict(torch.load(checkpoint_path, weights_only=False)["model"], map_location=torch.device('cpu'))
 
     elif model_name == "BLIPFeatureFusion":
         from models.uniir_blip.blip_featurefusion.blip_ff import BLIPFeatureFusion
@@ -146,7 +146,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.uniir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading BLIPFeatureFusion checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path)["model"], map_location=torch.device('cpu'))
+        model.load_state_dict(torch.load(checkpoint_path, weights_only=False)["model"], map_location=torch.device('cpu'))
 
     elif model_name == "RQTokenizer":
         from models.uniir_clip.clip_nofusion.clip_nf import CLIPNoFusion
@@ -164,7 +164,7 @@ def build_model_from_config(config):
 
         pretrained_config = model_config.pretrained_config
         pretrained_path = os.path.join(config.genir_dir, pretrained_config.pretrained_dir, pretrained_config.pretrained_name)
-        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'), weights_only=False)
         clip_model.load_state_dict(checkpoint["model"])
 
         model_config = config.model
@@ -173,7 +173,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading Residual Quantization checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'))["model"], strict=False)
+        model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
         
     elif model_name == "T5GenerativeRetriever":
         from models.uniir_clip.clip_nofusion.clip_nf import CLIPNoFusion
@@ -192,7 +192,7 @@ def build_model_from_config(config):
 
         pretrained_config = model_config.pretrained_config
         pretrained_path = os.path.join(config.genir_dir, pretrained_config.pretrained_dir, pretrained_config.pretrained_name)
-        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'), weights_only=False)
         clip_model.load_state_dict(checkpoint["model"])
         
         # seq2seq_tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-base", model_max_length=60)
@@ -203,7 +203,7 @@ def build_model_from_config(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading GenerativeRetriever checkpoint from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'))["model"], strict=False)
+        model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
 
     else:
         raise NotImplementedError(f"Model {model_name} is not implemented.")

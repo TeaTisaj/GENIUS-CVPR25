@@ -271,9 +271,9 @@ class MBEIRDictInstructioneDataset(MBEIRDatasetBase):
     ):
         super().__init__(mbeir_data_dir, None)
         print(f"\n---Loading Mbeir Dataset from Dictionary with Instruction---")
-        self.query_dict = torch.load(query_dict_dir)
+        self.query_dict = torch.load(query_dict_dir, weights_only=False)
         self.qid_to_index = self.query_dict['id_to_index']
-        self.pool_dict =  torch.load(pool_dict_dir, map_location=torch.device('cpu'))
+        self.pool_dict =  torch.load(pool_dict_dir, map_location=torch.device('cpu'), weights_only=False)
         self.did_to_index = self.pool_dict['id_to_index']
         self.shuffle_cand = shuffle_cand
         self.return_instruct = return_instruct
@@ -376,9 +376,9 @@ class MBEIRDictInstructioneDataset(MBEIRDatasetBase):
     ):
         super().__init__(mbeir_data_dir, None)
         print(f"\n---Loading Mbeir Dataset from Dictionary with Instruction---")
-        self.query_dict = torch.load(query_dict_dir)
+        self.query_dict = torch.load(query_dict_dir, weights_only=False)
         self.qid_to_index = self.query_dict['id_to_index']
-        self.pool_dict = torch.load(pool_dict_dir, map_location=torch.device('cpu'))
+        self.pool_dict = torch.load(pool_dict_dir, map_location=torch.device('cpu'), weights_only=False)
         self.did_to_index = self.pool_dict['id_to_index']
         self.shuffle_cand = shuffle_cand
         self.return_instruct = return_instruct
@@ -518,7 +518,7 @@ class MBEIRDictCandDataset(MBEIRDatasetBase):
     ):
         super().__init__(mbeir_data_dir, None)
         print(f"\n---Loading Mbeir Dataset from Dictionary---")
-        self.pool_dict = torch.load(pool_dict_dir, map_location=torch.device('cpu'))
+        self.pool_dict = torch.load(pool_dict_dir, map_location=torch.device('cpu'), weights_only=False)
         self.did_to_index = self.pool_dict['id_to_index']
         self._load_cand_pool(cand_pool_path)
 

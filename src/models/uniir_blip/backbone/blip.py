@@ -264,9 +264,9 @@ def load_checkpoint(model, url_or_filename):
     if is_url(url_or_filename):
         # use a single process to avoid unnecessary download
         cached_file = download_cached_file(url_or_filename, check_hash=False, progress=True)
-        checkpoint = torch.load(cached_file, map_location="cpu")
+        checkpoint = torch.load(cached_file, map_location="cpu", weights_only=False)
     elif os.path.isfile(url_or_filename):
-        checkpoint = torch.load(url_or_filename, map_location="cpu")
+        checkpoint = torch.load(url_or_filename, map_location="cpu", weights_only=False)
     else:
         raise RuntimeError("checkpoint url or path is invalid")
 

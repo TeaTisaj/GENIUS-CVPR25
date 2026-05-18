@@ -312,7 +312,7 @@ def main(config: Any) -> None:
         )
         assert os.path.exists(pretrained_path), f"Checkpoint file {pretrained_path} does not exist."
         logger.info(f"Loading CLIPScoreFusion checkpoint from {pretrained_path}")
-        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'), weights_only=False)
         clip_model.load_state_dict(checkpoint["model"])
 
     # Move model to GPU and wrap with DDP if needed
