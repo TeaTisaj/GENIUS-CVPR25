@@ -1,0 +1,32 @@
+data_config:
+  cand_pool_dir_name: cand_pool/local
+  enable_query_instruct: true
+  image_size: 224, 224
+  in_batch_neg_num: 0
+  query_instruct_path: instructions/query_instructions.tsv
+  shuffle_cand: true
+  test_dir_name: query/test
+  train_dir_name: query/train
+  val_dir_name: query/val
+dataloader_config:
+  batch_size: 64
+  num_workers: 8
+dist_config:
+  dist_url: env://
+embed_config:
+  cand_pools_config:
+    cand_pools_name_to_embed:
+    - iu_xray
+    embed_union_pool: false
+    enable_embed: true
+  embed_dir_name: embed
+  use_fp16: true
+experiment:
+  path_suffix: BiomedCLIP
+model:
+  emb_save_path: extracted_embed/BiomedCLIP/cand
+  gather_embeddings: true
+  name: BiomedCLIPNoFusion
+  short_name: BiomedCLIP
+  size: Base
+seed: 2023

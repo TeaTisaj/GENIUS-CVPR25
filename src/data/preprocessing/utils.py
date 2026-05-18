@@ -18,6 +18,7 @@ DATASET_IDS = {
     "MSCOCO": 9,
     "FLICKR30K": 10,
     "MIMIC_CXR": 11,
+    "IU_XRAY": 12,
 }
 
 MBEIR_TASK = {
@@ -45,6 +46,7 @@ MBEIR_DATASET_TO_DOMAIN = {
     "MSCOCO": "common",
     "FLICKR30K": "common",
     "MIMIC_CXR": "medical",
+    "IU_XRAY": "medical",
 }
 
 IMAGE_SHORT_SIDE = 256  # The shortest side of the image is resized to this size
