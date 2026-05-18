@@ -31,6 +31,7 @@ MBEIR_TASK = {
     "image,text -> text": 6,
     "image,text -> image": 7,
     "image,text -> image,text": 8,
+    "image -> image,text": 9,  # MIMIC-CXR: image query, multimodal candidate
 }
 
 MBEIR_DATASET_TO_DOMAIN = {

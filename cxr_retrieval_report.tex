@@ -1,0 +1,565 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{multirow}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black
+}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+\title{%
+    \textbf{Generative Retrieval for Fine-Grained Chest X-Ray Case Retrieval}\\[0.4em]
+    \large Research Plan and Progress Report\\[0.2em]
+    \normalsize IRLab Internship --- University of Amsterdam
+}
+\author{Tea Cetojevic Tisaj \\ \small Supervised by Prof.\ Maarten de Rijke \& Yubao Tang}
+\date{April - July 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report describes an internship project investigating the application of
+\emph{generative retrieval} to fine-grained chest X-ray (CXR) case retrieval.
+The central research question is not simply whether the GENIUS framework can be
+adapted to medical data, but whether the generative retrieval paradigm
+- which replaces nearest-neighbour search with autoregressive decoding of
+discrete document identifiers - can learn \emph{discriminative} semantic IDs
+for a domain where images are globally homogeneous and clinically meaningful
+variation is subtle.
+
+We use BiomedCLIP as a domain-appropriate encoder and retrain both the
+residual quantizer and the T5 decoder on MIMIC-CXR.
+The primary evaluation is in-domain (MIMIC-CXR test split); a secondary
+evaluation assesses cross-dataset generalisation to IU~X-Ray.
+If the standard pipeline achieves adequate discrimination, the result directly
+validates generative retrieval for medical case search.
+If not, the contribution shifts to targeted improvements to the quantization
+objective --- incorporating report-aware, disease-aware, or hard-negative-aware
+supervision to encourage the codebook to separate clinically distinct cases.
+This document describes the research framing, technical decisions, current
+implementation status, and planned next steps.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+%% ---------------------------------------------------------------
+\section{Motivation and Research Positioning}
+
+Radiology image interpretation is inherently case-based: clinicians routinely
+search prior cases with similar findings to support diagnostic reasoning.
+Existing retrieval systems overwhelmingly rely on \emph{embedding-based}
+similarity search --- nearest-neighbour retrieval over dense continuous
+embeddings --- which returns visually or semantically similar cases as ranked
+by cosine distance in some representation space.
+
+\emph{Generative retrieval} offers a structurally different paradigm.
+Rather than representing candidates as points in a continuous vector space and
+ranking by similarity, the system autoregressively \emph{generates} a discrete
+identifier string for the most relevant candidate given a query.
+This collapses retrieval to a sequence generation problem, avoids the linear
+scaling of index search with corpus size, and in principle encodes diagnostic
+reasoning rather than surface similarity.
+
+Chest X-rays present an especially demanding testbed for this paradigm:
+images are globally similar (all show lungs, ribs, and soft tissue in largely
+fixed geometry), while clinically meaningful differences are subtle ---
+a small consolidation, an asymmetric pleural effusion, a widened mediastinum.
+This creates a fundamental tension with how the residual quantizer constructs
+identifiers: codes learned from global image statistics may not separate
+cases that a radiologist would consider distinct.
+
+\textbf{Research positioning.}
+This project does \emph{not} frame itself as a straightforward application of
+GENIUS to a new domain.
+Instead, the generative retrieval paradigm itself is under investigation:
+we ask whether discrete identifier learning can achieve fine-grained
+discrimination in a clinically demanding, low-visual-variance domain.
+The answer shapes the contribution.
+If the standard pipeline succeeds, this constitutes a positive result for
+generative retrieval in medical search.
+If it fails --- identifiers collapse to coarse disease categories, codebook
+utilisation degrades, or retrieval quality falls short of a dense baseline ---
+the contribution lies in diagnosing the failure mode and proposing targeted
+improvements to the quantization objective.
+
+%% ---------------------------------------------------------------
+\section{Background: GENIUS}
+
+GENIUS~\cite{genius2025} is a generative retrieval framework for universal
+multimodal search, achieving state-of-the-art performance among generative
+retrieval methods on the M-BEIR benchmark (5.6M candidates across eight tasks).
+The framework consists of three training stages:
+
+\begin{enumerate}[itemsep=2pt]
+    \item \textbf{Stage~0 --- Encoder.}
+    CLIP ViT-L/14 is fine-tuned with contrastive learning on multimodal
+    query-target pairs using natural-language instructions to align query
+    intent with target semantics.
+
+    \item \textbf{Stage~1 --- Residual Quantization (RQ).}
+    Candidate embeddings are compressed into discrete ID sequences by a
+    hierarchical residual quantizer.
+    The first code captures modality (image, text, or image-text pair);
+    subsequent codes encode semantics coarse-to-fine over a 4096-token
+    codebook repeated across 8 levels.
+
+    \item \textbf{Stage~2 --- Autoregressive Decoder.}
+    A T5-small decoder is trained to generate the target candidate's ID
+    sequence given a query embedding.
+    At inference, trie-constrained beam search over the set of valid ID
+    sequences prevents generation of identifiers that do not correspond to
+    any corpus entry.
+\end{enumerate}
+
+GENIUS achieves nearly constant retrieval latency as corpus size grows,
+unlike embedding-based methods whose search cost scales linearly with the
+number of indexed candidates.
+
+%% ---------------------------------------------------------------
+\section{Problem Formulation}
+
+\subsection{Task definition}
+
+Given a query consisting of a chest X-ray image $q_i$ and optional clinical
+context $q_t$ (e.g.\ a brief indication or prior finding), retrieve a ranked
+list of relevant radiology studies from a fixed corpus $\mathcal{C}$.
+
+Following GENIUS notation, the system generates a discrete identifier
+$T_c = (t^c_1, \ldots, t^c_M)$ for the most relevant candidate $c$:
+\[
+t^c_k = \arg\max_{t \in \mathcal{V}} \left[
+    \log p\!\left(t \;\middle|\; \mathbf{q},\, t^c_{<k};\, \theta\right)
+\right],
+\]
+where $\mathcal{V}$ is the codebook vocabulary and $\mathbf{q}$ is the query
+embedding.
+Candidate generation is constrained by a trie over valid identifier sequences,
+ensuring the decoder can only produce IDs that exist in the candidate pool.
+
+\subsection{Candidate representation}
+
+Each candidate is defined at the \textbf{study level}:
+\begin{itemize}[itemsep=2pt]
+    \item \textbf{Image}: frontal-view radiograph (PA preferred; AP as fallback).
+    Studies with no frontal view are excluded.
+    \item \textbf{Text}: concatenation of the \textit{Findings} and
+    \textit{Impression} sections of the associated radiology report,
+    following standard practice in the CXR literature.
+    \item \textbf{Candidate modality}: \texttt{image,text} (multimodal).
+    \item \textbf{Query modality}: \texttt{image} (image-only query at test time,
+    reflecting realistic clinical use where a clinician searches by image).
+\end{itemize}
+
+Multimodal candidates (\texttt{image,text}) are used rather than text-only
+(\texttt{image$\to$text}, MBEIR task~3): combining the frontal image and report
+provides richer quantizer supervision, and the image component is already
+available at retrieval time.
+The resulting M-BEIR task type is \texttt{image$\to$image,text} (task~9),
+which was absent from the original \texttt{MBEIR\_TASK} mapping in
+\texttt{utils.py}; the entry has been added.
+Note that query modality is \texttt{image} only (\texttt{query\_txt = None})
+--- this is intentional and distinct from task~7 (\texttt{image,text$\to$image}),
+which requires a text component in the query.
+
+\subsection{Research questions}
+
+\textbf{Primary:}
+Can the generative retrieval paradigm, adapted to the medical domain via a
+biomedical vision-language encoder, learn sufficiently discriminative discrete
+identifiers for fine-grained CXR case retrieval?
+
+\textbf{Secondary:}
+\begin{itemize}[itemsep=2pt]
+    \item Does the trained system generalise across datasets
+    (MIMIC-CXR $\to$ IU~X-Ray), or does it overfit to MIMIC-CXR-specific
+    acquisition and reporting conventions?
+    \item How does generative retrieval compare to an embedding-based baseline
+    using the same BiomedCLIP encoder?
+    \item What are the failure modes of residual quantization under visual
+    homogeneity? Does codebook collapse occur, and at what granularity?
+    \item If the standard pipeline is insufficient, which training signal ---
+    report-aware, disease-aware, or hard-negative-aware --- most effectively
+    improves identifier discriminability?
+\end{itemize}
+
+%% ---------------------------------------------------------------
+\section{Proposed Approach}
+
+\subsection{Encoder: BiomedCLIP (frozen)}
+
+We replace CLIP ViT-L/14 with BiomedCLIP~\cite{biomedclip2024}
+(ViT-B/16, 512-dimensional output), pretrained on 15~million biomedical
+image-text pairs from PubMed Central.
+BiomedCLIP has been shown to outperform general-purpose CLIP on a range of
+medical imaging benchmarks and provides a domain-appropriate representation
+space for chest radiographs.
+
+The encoder is used \emph{frozen}: its weights are not updated during
+Stages~1 or~2.
+Stage~0 fine-tuning of BiomedCLIP is deferred as a potential extension;
+fine-tuning under a contrastive objective would require careful design of
+hard negatives for CXR (see Section~\ref{sec:open}) and is not necessary to
+evaluate the core retrieval framework.
+
+The change from 768-dimensional CLIP embeddings to 512-dimensional BiomedCLIP
+embeddings is absorbed directly: the quantizer input dimension and the T5
+decoder projection are set to 512 in the configuration, with no intermediate
+adapter.
+Both Stage~1 and Stage~2 are retrained from scratch using BiomedCLIP features.
+
+\subsection{Dataset: MIMIC-CXR}
+
+MIMIC-CXR-JPG~\cite{mimicjpg2019} contains approximately 370,000 radiograph
+images from around 227,000 studies, provided with structured
+train/validation/test splits that are stratified at the patient level to
+prevent data leakage.
+
+\begin{itemize}[itemsep=2pt]
+    \item \textbf{Candidate pool}: all train-split studies with a frontal view
+    and a non-empty report ($\approx$180--200K studies).
+    \item \textbf{Stage~1 training}: BiomedCLIP embeddings of all train-split
+    candidates.
+    \item \textbf{Stage~2 training}: image queries paired with their
+    corresponding study IDs as targets, using the train split.
+    \item \textbf{Evaluation}: MIMIC-CXR test split (closed-corpus,
+    in-distribution).
+    \item \textbf{Cross-dataset evaluation}: IU~X-Ray ($\approx$3,955 studies),
+    zero-shot or with fine-tuning on the IU~X-Ray training split.
+\end{itemize}
+
+\subsection{Training stages (adapted)}
+\label{sec:stages}
+
+\textbf{Stage~0} is \emph{skipped} at this stage.
+BiomedCLIP is used as a pretrained frozen encoder.
+Fine-tuning is listed as a future extension.
+
+\textbf{Stage~1} (residual quantizer) is \emph{retrained from scratch} on
+MIMIC-CXR train embeddings.
+The codebook size (4096 tokens per level) and number of levels (8 semantic
+levels plus 1 modality indicator) follow the default GENIUS configuration,
+which serves as the baseline.
+Codebook utilisation --- the fraction of active codes and entropy of the
+assignment distribution --- will be monitored throughout training to detect
+collapse.
+
+\textbf{Stage~2} (T5 decoder) is \emph{retrained} on MIMIC-CXR train queries.
+T5-small is initialised from pretrained weights (hidden dimension 512 matches
+our embedding dimension); the output projection over the code-token vocabulary
+is reinitialised randomly.
+
+\subsection{Evaluation protocol}
+\label{sec:eval}
+
+\textbf{Ground truth definition.}
+Retrieval positives are defined by shared CheXpert pathology labels: a
+candidate is considered positive for a given query if the two studies share at
+least one active (positive) pathology label as assigned by the CheXpert
+labeller.
+This definition is clinically interpretable, stable across dataset splits, and
+does not require additional annotation.
+Its main limitation --- it is insensitive to severity and laterality --- is
+acknowledged and treated as a direction for future refinement.
+
+\textbf{Metrics.}
+Following the M-BEIR convention: Recall@5 and Recall@10.
+For cross-dataset generalisation (IU~X-Ray), the same metrics apply.
+
+\textbf{Baseline.}
+The primary comparison is an embedding-based retrieval system using the same
+frozen BiomedCLIP encoder: query and candidate embeddings are compared by
+cosine similarity, with no learned quantization or decoder.
+This isolates the contribution of the generative retrieval framework from the
+representation quality of the encoder.
+
+%% ---------------------------------------------------------------
+\section{Technical Implementation}
+
+\subsection{Codebase modifications}
+
+The GENIUS codebase required targeted modifications to support a different
+encoder and embedding dimension.
+Table~\ref{tab:impl} summarises the components implemented to date.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Implementation status of pipeline components.}
+\label{tab:impl}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{File} & \textbf{Status} \\
+\midrule
+BiomedCLIP encoder wrapper & \texttt{src/models/biomedclip/biomedclip\_nofusion.py} & Done \\
+Feature extraction script & \texttt{src/feature\_extraction/biomedclip\_feature\_extraction.py} & Done \\
+Feature extraction config & \texttt{src/feature\_extraction/config\_biomedclip\_cand.yaml} & Done \\
+Stage~1 RQ config (\texttt{feature\_dim: 512}) & \texttt{configs\_scripts/.../inbatch\_biomedclip.yaml} & Done \\
+Stage~2 generator config & \texttt{configs\_scripts/.../inbatch\_biomedclip.yaml} & Done \\
+Configurable \texttt{feature\_dim} (768 $\to$ 512) & \texttt{residual\_quantization.py}, \texttt{retriever.py} & Done \\
+MIMIC-CXR preprocessing script & \texttt{src/data/preprocessing/mimic\_cxr.py} & Done \\
+Dataset registration in \texttt{utils.py} & \texttt{DATASET\_IDS}, \texttt{MBEIR\_DATASET\_TO\_DOMAIN} & Done \\
+Eval config for MIMIC-CXR & \texttt{config\_eval\_mimic\_cxr.yaml} & Done \\
+Slurm job scripts & \texttt{scripts/run\_biomedclip\_*.sh} & Done \\
+IU~X-Ray preprocessing (smoke test) & \texttt{src/data/preprocessing/iu\_xray.py} & Done \\
+\texttt{open\_clip\_torch} dependency & cluster \texttt{genius2} environment & Installed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{BiomedCLIP encoder wrapper}
+
+The wrapper (\texttt{biomedclip\_nofusion.py}) provides the same interface as
+the existing \texttt{CLIPNoFusion} class used in GENIUS, so the rest of the
+pipeline requires no changes to its encoder-facing API.
+The key method is \texttt{encode\_multimodal\_input(img, txt)}, which returns a
+pair of \texttt{[B, 512]} tensors for image and text embeddings respectively.
+The wrapper handles the HuggingFace tokenizer output format required by
+\texttt{open\_clip}, which differs from the standard CLIP tokenizer interface.
+Encoder weights are frozen throughout; no gradients flow into BiomedCLIP.
+
+\subsection{MIMIC-CXR preprocessing}
+
+The preprocessing script (\texttt{mimic\_cxr.py}) operates on the MIMIC-CXR-JPG
+directory structure and produces M-BEIR-compatible JSONL files for both the
+candidate pool and query sets.
+For each study, it selects the frontal-view image (PA preferred over AP),
+extracts the Findings and Impression sections via case-insensitive regex (to
+handle header variants), and constructs a study-level candidate entry.
+The CheXpert pathology labels are stored in the \texttt{src\_content} field of
+each candidate entry --- not used during training but available for
+disease-aware supervision in future experiments.
+Studies with no frontal view or with report text shorter than ten characters
+are excluded with a logged warning.
+Train/validation/test assignment follows the official MIMIC-CXR split CSV,
+which is patient-stratified.
+
+\subsection{IU X-Ray as end-to-end smoke test}
+
+Because MIMIC-CXR access requires PhysioNet credentialing (currently in
+progress), IU~X-Ray~\cite{iuxray2015} ($\approx$7,500 studies, publicly available)
+is used as a smoke-test corpus.
+The goal is to verify that preprocessing, feature extraction, Stage~1, Stage~2,
+and evaluation all run to completion without errors \emph{before} MIMIC-CXR
+data arrives.
+No meaningful retrieval results are expected at this scale, and codebook
+collapse is anticipated; the exercise is purely diagnostic.
+
+%% ---------------------------------------------------------------
+\section{Technical Challenges}
+
+\begin{enumerate}[itemsep=4pt]
+
+    \item \textbf{Quantizer discriminability under visual homogeneity.}
+    The residual quantizer is trained to minimise reconstruction error in
+    embedding space.
+    If BiomedCLIP embeddings for clinically distinct CXR studies are close in
+    Euclidean distance --- plausible given global image similarity ---
+    the quantizer may assign identical ID sequences to cases a radiologist
+    would distinguish.
+    Codebook utilisation and per-level assignment entropy will be monitored
+    during Stage~1 training.
+
+    \item \textbf{Corpus scale.}
+    GENIUS was trained on 1.5M+ queries and 5.6M candidates; MIMIC-CXR provides
+    approximately 200K training studies.
+    At this scale, the codebook may be over-parameterised relative to the
+    training data, risking dead codes (unused codebook entries) or uneven
+    utilisation that degrades retrieval diversity.
+
+    \item \textbf{In-batch negative quality.}
+    GENIUS Stage~2 training uses in-batch negatives.
+    In a general-domain corpus, randomly sampled negatives are typically
+    easy to distinguish from the true positive.
+    For chest X-rays, in-batch negatives may be visually and semantically similar
+    to the query (e.g.\ two studies both showing ``No finding''), providing
+    a weak training signal.
+    CheXpert labels stored in \texttt{src\_content} are retained to enable
+    disease-aware hard negative mining without re-running preprocessing.
+
+    \item \textbf{Multi-view fusion.}
+    MIMIC-CXR studies typically include a frontal and a lateral view.
+    The current approach uses only the frontal view; whether multi-view
+    fusion (e.g.\ mean-pooled embedding over available views) improves
+    representation quality for the quantizer is left as a future experiment.
+
+    \item \textbf{Ground truth granularity.}
+    CheXpert-label-overlap as the ground truth definition is coarse:
+    two studies sharing the label ``Consolidation'' may represent very
+    different clinical presentations.
+    This is a known limitation that constrains the interpretability of
+    Recall@K metrics but does not invalidate the relative comparison
+    between the generative and embedding-based baselines.
+
+\end{enumerate}
+
+%% ---------------------------------------------------------------
+\section{Progress Summary}
+
+\begin{itemize}[itemsep=4pt]
+    \item GENIUS codebase understood at the level of all three training stages
+    and the inference pipeline.
+    \item Conda environment \texttt{genius2} configured on the ILPS cluster
+    (Python~3.10, PyTorch, \texttt{open\_clip\_torch} installed).
+    \item All original GENIUS checkpoints downloaded:
+    \texttt{clip\_sf\_large.pth}, \texttt{rq\_clip\_large.pth},
+    \texttt{GENIUS\_t5small.pth}.
+    \item COCO M-BEIR preprocessing complete and verified;
+    JSONL candidate pool and query files generated.
+    \item BiomedCLIP encoder wrapper implemented with GENIUS-compatible
+    interface; feature extraction scripts and configs ready.
+    \item \texttt{feature\_dim} made configurable throughout
+    \texttt{residual\_quantization.py} and \texttt{retriever.py};
+    all 768-hardcoded occurrences replaced.
+    \item MIMIC-CXR preprocessing script written (ready to run on data arrival);
+    dataset registered in \texttt{utils.py}.
+    \item Stage~1 and Stage~2 configs for BiomedCLIP (\texttt{feature\_dim: 512})
+    prepared.
+    \item Eval config for MIMIC-CXR prepared (\texttt{config\_eval\_mimic\_cxr.yaml}).
+    \item Slurm job scripts written for feature extraction, Stage~1, and Stage~2.
+    \item IU~X-Ray preprocessing script written for smoke-test pipeline.
+    \item PhysioNet credentialing application for MIMIC-CXR in progress.
+    \item Literature review ongoing: GENIUS, GIT-CXR, FAST-MRG, IRGen, UniIR,
+    BiomedCLIP.
+\end{itemize}
+
+%% ---------------------------------------------------------------
+\section{Planned Next Steps}
+
+\begin{enumerate}[itemsep=4pt]
+
+    \item \textbf{IU~X-Ray smoke test.}
+    Run the full pipeline (preprocessing $\to$ BiomedCLIP feature extraction
+    $\to$ Stage~1 $\to$ Stage~2 $\to$ eval) on IU~X-Ray to verify end-to-end
+    correctness before MIMIC-CXR data arrives.
+
+    \item \textbf{Obtain and stage MIMIC-CXR data.}
+    Complete PhysioNet credentialing; download MIMIC-CXR-JPG ($\approx$100--150~GB)
+    to the cluster shared filesystem.
+
+    \item \textbf{BiomedCLIP feature extraction on MIMIC-CXR.}
+    Run \texttt{run\_biomedclip\_feature\_extraction.sh} on the MIMIC-CXR train
+    and candidate splits (GPU Slurm job, 4$\times$ A6000).
+
+    \item \textbf{Stage~1: quantizer training.}
+    Train the residual quantizer on MIMIC-CXR train embeddings; log codebook
+    utilisation, dead-code fraction, and per-level entropy.
+    Tune codebook size and number of levels if collapse is observed.
+
+    \item \textbf{Stage~2: decoder training.}
+    Train the T5-small decoder on MIMIC-CXR train queries.
+
+    \item \textbf{Evaluation (in-domain).}
+    Evaluate on MIMIC-CXR test split (Recall@5, Recall@10).
+    Compare against the BiomedCLIP embedding baseline.
+
+    \item \textbf{Diagnosis of failure modes.}
+    If performance is below the embedding baseline, analyse codebook assignment
+    patterns: do semantically similar studies share identical prefixes?
+    At which level does discrimination break down?
+
+    \item \textbf{Quantizer improvements (conditional on diagnosis).}
+    Depending on failure mode analysis, implement one or more of:
+    disease-aware contrastive loss using CheXpert labels;
+    report-similarity-weighted hard negatives (BioSentVec);
+    or modified RQ training with pathology-conditioned codebook initialisation.
+
+    \item \textbf{Cross-dataset evaluation.}
+    Zero-shot evaluation on IU~X-Ray, or fine-tuning on the IU~X-Ray train
+    split if zero-shot performance is insufficient to draw conclusions.
+
+\end{enumerate}
+
+%% ---------------------------------------------------------------
+\section{Open Questions}
+\label{sec:open}
+
+\begin{enumerate}[itemsep=6pt]
+
+    \item \textbf{Hard negative design.}
+    In-batch negatives may be insufficient for fine-grained CXR discrimination.
+    If so, which supervision signal is most effective: pathology-label-based
+    hard negatives (same modality, different pathology), report-similarity-based
+    negatives (high BERTScore, different patient), or distance-based negatives
+    in BiomedCLIP embedding space?
+    The choice affects both Stage~1 and Stage~2 training.
+
+    \item \textbf{Stage~0 fine-tuning of BiomedCLIP.}
+    The current plan uses BiomedCLIP frozen.
+    If Stage~1 codebook quality is poor --- indicated by high dead-code fraction
+    or low utilisation entropy --- fine-tuning the encoder under a
+    contrastive objective on MIMIC-CXR report-image pairs may improve the
+    embedding space prior to quantization.
+    This is a resource-intensive extension and is deferred pending Stage~1
+    diagnostic results.
+
+    \item \textbf{Multi-view fusion.}
+    MIMIC-CXR studies typically include frontal and lateral projections.
+    The current approach selects only the frontal view.
+    Whether mean-pooled multi-view embeddings improve codebook quality or
+    retrieval performance is empirically unexplored in this setting.
+
+\end{enumerate}
+
+%% ---------------------------------------------------------------
+\section{Target Venues}
+
+\begin{itemize}[itemsep=4pt]
+    \item \textbf{ECIR 2027} (primary) --- Information retrieval community;
+    deadline approximately October--November 2026.
+    IRLab UvA has a strong presence at ECIR and the venue is directly
+    appropriate for retrieval methodology work.
+    \item \textbf{SIGIR 2027} (backup) --- Deadline approximately
+    January 2027; higher competitive bar; appropriate if results are strong.
+    \item \textbf{ImageCLEF 2026} (if results arrive early) --- Medical image
+    retrieval track; timeline to be confirmed with supervisor.
+\end{itemize}
+
+%% ---------------------------------------------------------------
+\section*{References}
+\begin{thebibliography}{9}
+
+\bibitem{genius2025}
+S.\ Kim, X.\ Zhu, X.\ Lin, M.\ Bastan, D.\ Gray, and S.\ Kwak.
+\textit{GENIUS: A Generative Framework for Universal Multimodal Search.}
+arXiv:2503.19868, 2025.
+
+\bibitem{biomedclip2024}
+S.\ Zhang et al.
+\textit{BiomedCLIP: a multimodal biomedical foundation model pretrained from
+fifteen million scientific image-text pairs.}
+arXiv:2303.00915, 2023.
+
+\bibitem{mimicjpg2019}
+A.\ E.\ Johnson et al.
+\textit{MIMIC-CXR-JPG, a large publicly available database of labeled
+chest radiographs.}
+arXiv:1901.07042, 2019.
+
+\bibitem{iuxray2015}
+D.\ Demner-Fushman et al.
+\textit{Preparing a collection of radiology examinations for distribution
+and retrieval.}
+\textit{Journal of the American Medical Informatics Association},
+23(2):304--310, 2016.
+
+\end{thebibliography}
+
+\end{document}

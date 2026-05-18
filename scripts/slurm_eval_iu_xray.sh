@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --gres=gpu:nvidia_rtx_a6000:2
+#SBATCH --gres=gpu:nvidia_rtx_a6000:1
 #SBATCH --time=02:00:00
 #SBATCH --mem=32G
 
@@ -20,7 +20,7 @@ MBEIR_DATA_DIR="/fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data"
 COMMON_DIR="$SRC/common"
 MODEL_DIR="$SRC/models/generative_retriever"
 CONFIG_PATH="$MODEL_DIR/configs_scripts/large/eval/inbatch/config_eval_iu_xray.yaml"
-NPROC=2
+NPROC=1
 
 export PATH="/home/tcetoje/miniconda3/bin:$PATH"
 source /home/tcetoje/miniconda3/etc/profile.d/conda.sh
@@ -29,7 +29,7 @@ export PATH="/home/tcetoje/miniconda3/envs/genius2/bin:$PATH"
 
 export PYTHONPATH="$SRC"
 export TOKENIZERS_PARALLELISM=false
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 
 echo "Node:       $(hostname)"
 echo "Config:     $CONFIG_PATH"
