@@ -15,17 +15,26 @@ dist_config:
   dist_url: env://
 embed_config:
   cand_pools_config:
-    cand_pools_name_to_embed:
-    - iu_xray
-    embed_union_pool: false
-    enable_embed: true
+    enable_embed: false
   embed_dir_name: embed
+  train_datasets_config:
+    correspond_cand_pools_name:
+    - iu_xray
+    datasets_name:
+    - iu_xray
+    enable_embed: true
   use_fp16: true
+  val_datasets_config:
+    correspond_cand_pools_name:
+    - iu_xray
+    datasets_name:
+    - iu_xray
+    enable_embed: true
 experiment:
   instruct_status: Instruct
   path_suffix: BiomedCLIP
 model:
-  emb_save_path: extracted_embed/BiomedCLIP/cand
+  emb_save_path: extracted_embed/BiomedCLIP/train
   gather_embeddings: true
   name: BiomedCLIPNoFusion
   short_name: BiomedCLIP

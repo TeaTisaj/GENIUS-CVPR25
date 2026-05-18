@@ -8,6 +8,7 @@ GENIUS/
 extracted_embed/
 gen_code/
 retrieval_results/
+logger/
 
 # Python
 **/__pycache__/

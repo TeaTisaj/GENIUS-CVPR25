@@ -131,17 +131,18 @@ def generate_embeds_for_config(model, img_preprocess_fn, tokenizer, config):
                         batch[key] = batch[key].to(config.dist_config.gpu_id, non_blocking=True)
 
                 with autocast(enabled=config.embed_config.use_fp16):
-                    img_emb, txt_emb = model.module.encode_multimodal_input(
+                    img_emb, txt_emb = model.encode_multimodal_input(
                         batch["image_batched"], batch["txt_batched"]
                     )
 
-                did_list = batch.get("did_list")
+                id_key = "did_list" if split_name == "cand_pool" else "qid_list"
+                id_list = batch.get(id_key)
                 txt_mask_batched = batch["txt_mask_batched"]
                 image_mask_batched = batch["image_mask_batched"]
 
                 dist.barrier()
                 if utils.get_world_size() > 1:
-                    did_list = torch.cat(utils.GatherLayer.apply(torch.LongTensor(did_list).to(img_emb.device)), dim=0)
+                    id_list = torch.cat(utils.GatherLayer.apply(torch.as_tensor(id_list, dtype=torch.long, device=img_emb.device)), dim=0)
                     txt_emb = torch.cat(utils.GatherLayer.apply(txt_emb), dim=0)
                     img_emb = torch.cat(utils.GatherLayer.apply(img_emb), dim=0)
                     txt_mask_batched = torch.cat(utils.GatherLayer.apply(txt_mask_batched), dim=0)
@@ -149,7 +150,7 @@ def generate_embeds_for_config(model, img_preprocess_fn, tokenizer, config):
 
                 dist.barrier()
                 if utils.is_main_process():
-                    for j, did in enumerate(did_list):
+                    for j, did in enumerate(id_list):
                         if utils.get_world_size() > 1:
                             did = did.item()
                         if did not in dataset_split_dict['id_to_index']:
@@ -186,14 +187,15 @@ def main(config):
     model.eval()
     model = model.to(config.dist_config.gpu_id)
 
-    if config.dist_config.distributed_mode:
+    # DDP requires at least one trainable parameter; skip it for frozen inference models.
+    if config.dist_config.distributed_mode and any(p.requires_grad for p in model.parameters()):
         model = DDP(model, device_ids=[config.dist_config.gpu_id])
 
-    model_without_ddp = model.module if config.dist_config.distributed_mode else model
+    model_without_ddp = model.module if hasattr(model, 'module') else model
     img_preprocess_fn = model_without_ddp.get_img_preprocess_fn()
     tokenizer = model_without_ddp.get_tokenizer()
 
-    generate_embeds_for_config(model, img_preprocess_fn, tokenizer, config)
+    generate_embeds_for_config(model_without_ddp, img_preprocess_fn, tokenizer, config)
 
 
 if __name__ == "__main__":

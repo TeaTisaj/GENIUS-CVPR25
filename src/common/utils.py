@@ -205,6 +205,25 @@ def build_model_from_config(config):
         print(f"loading GenerativeRetriever checkpoint from {checkpoint_path}")
         model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
 
+    elif model_name == "GENIUS_biomedclip_t5small":
+        from models.biomedclip.biomedclip_nofusion import BiomedCLIPNoFusion
+        from transformers import T5TokenizerFast
+        from models.generative_retriever.retriever import T5ForGenerativeRetrieval
+
+        model_config = config.model
+        clip_model = BiomedCLIPNoFusion(config=config)
+        clip_model.float()
+        clip_model.eval()
+
+        seq2seq_tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small", model_max_length=42)
+        model = T5ForGenerativeRetrieval(config=config, tokenizer=seq2seq_tokenizer, clip_model=clip_model)
+
+        ckpt_config = model_config.ckpt_config
+        checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
+        assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
+        print(f"loading GENIUS_biomedclip checkpoint from {checkpoint_path}")
+        model.load_state_dict(torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
+
     else:
         raise NotImplementedError(f"Model {model_name} is not implemented.")
         # Notes: Add other models here
