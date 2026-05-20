@@ -35,23 +35,30 @@
 \maketitle
 
 \begin{abstract}
-This report describes an internship project investigating the application of
-\emph{generative retrieval} to fine-grained chest X-ray (CXR) case retrieval.
-The central research question is not simply whether the GENIUS framework can be
-adapted to medical data, but whether the generative retrieval paradigm
-- which replaces nearest-neighbour search with autoregressive decoding of
-discrete document identifiers - can learn \emph{discriminative} semantic IDs
-for a domain where images are globally homogeneous and clinically meaningful
-variation is subtle.
+This report describes an internship project on \emph{generative multimodal
+retrieval for fine-grained chest X-ray (CXR) case retrieval}.
+Given a query in the form of a CXR image, a textual clinical description, or
+both, the goal is to retrieve clinically relevant historical cases from a
+study-level corpus.
+The primary evaluation setting is \emph{non-overlapped case retrieval}: query
+cases used for validation and testing are disjoint from the training corpus,
+reflecting the realistic clinical scenario in which a new case is presented and
+similar historical cases are sought.
 
-We use BiomedCLIP as a domain-appropriate encoder and retrain both the
+The central research question is not simply whether the GENIUS generative
+retrieval framework can be adapted to a new domain, but whether the paradigm
+itself --- replacing nearest-neighbour search over continuous embeddings with
+autoregressive decoding of discrete document identifiers --- can acquire
+\emph{discriminative} semantic identifiers in a domain where images are globally
+homogeneous and clinically meaningful variation is subtle.
+We use BiomedCLIP as a domain-appropriate frozen encoder and retrain both the
 residual quantizer and the T5 decoder on MIMIC-CXR.
 The primary evaluation is in-domain (MIMIC-CXR test split); a secondary
 evaluation assesses cross-dataset generalisation to IU~X-Ray.
 If the standard pipeline achieves adequate discrimination, the result directly
 validates generative retrieval for medical case search.
 If not, the contribution shifts to targeted improvements to the quantization
-objective --- incorporating report-aware, disease-aware, or hard-negative-aware
+objective, incorporating report-aware, disease-aware, or hard-negative-aware
 supervision to encourage the codebook to separate clinically distinct cases.
 This document describes the research framing, technical decisions, current
 implementation status, and planned next steps.
@@ -64,40 +71,50 @@ implementation status, and planned next steps.
 \section{Motivation and Research Positioning}
 
 Radiology image interpretation is inherently case-based: clinicians routinely
-search prior cases with similar findings to support diagnostic reasoning.
+search prior studies with similar findings to support diagnostic reasoning,
+triage, and treatment planning.
 Existing retrieval systems overwhelmingly rely on \emph{embedding-based}
 similarity search --- nearest-neighbour retrieval over dense continuous
-embeddings --- which returns visually or semantically similar cases as ranked
-by cosine distance in some representation space.
+embeddings --- returning cases ranked by cosine distance in some representation
+space.
+While effective, this approach requires maintaining and searching a vector index
+that scales linearly with corpus size, and the retrieval objective (proximity
+in embedding space) is not directly aligned with clinical relevance.
 
 \emph{Generative retrieval} offers a structurally different paradigm.
 Rather than representing candidates as points in a continuous vector space and
 ranking by similarity, the system autoregressively \emph{generates} a discrete
-identifier string for the most relevant candidate given a query.
-This collapses retrieval to a sequence generation problem, avoids the linear
-scaling of index search with corpus size, and in principle encodes diagnostic
-reasoning rather than surface similarity.
+semantic identifier for the most relevant candidate given a query.
+This collapses retrieval to a sequence generation problem, offers near-constant
+latency with respect to corpus size, and --- crucially --- embeds the mapping
+from queries to cases directly into model parameters rather than into an
+external index.
 
-Chest X-rays present an especially demanding testbed for this paradigm:
-images are globally similar (all show lungs, ribs, and soft tissue in largely
-fixed geometry), while clinically meaningful differences are subtle ---
-a small consolidation, an asymmetric pleural effusion, a widened mediastinum.
-This creates a fundamental tension with how the residual quantizer constructs
-identifiers: codes learned from global image statistics may not separate
-cases that a radiologist would consider distinct.
+Chest X-rays present an especially demanding testbed for this paradigm.
+Images are globally similar: all show lungs, ribs, and soft tissue in a largely
+fixed anatomical geometry.
+Yet clinically meaningful differences are subtle ---
+a focal consolidation, an asymmetric pleural effusion, a widened mediastinum ---
+and distinguishing these requires fine-grained discrimination rather than
+coarse visual matching.
+This creates a fundamental tension with the residual quantization step that
+constructs discrete identifiers: codebook entries learned primarily from global
+embedding statistics may fail to separate cases that a radiologist would
+consider diagnostically distinct.
 
 \textbf{Research positioning.}
 This project does \emph{not} frame itself as a straightforward application of
 GENIUS to a new domain.
-Instead, the generative retrieval paradigm itself is under investigation:
-we ask whether discrete identifier learning can achieve fine-grained
-discrimination in a clinically demanding, low-visual-variance domain.
-The answer shapes the contribution.
+Rather, the central question is whether the generative retrieval paradigm
+itself --- specifically, the discrete identifier learning component --- can
+achieve fine-grained discrimination in a clinically demanding,
+low-visual-variance domain.
+The answer shapes the primary contribution.
 If the standard pipeline succeeds, this constitutes a positive result for
-generative retrieval in medical search.
+generative retrieval in medical case search.
 If it fails --- identifiers collapse to coarse disease categories, codebook
-utilisation degrades, or retrieval quality falls short of a dense baseline ---
-the contribution lies in diagnosing the failure mode and proposing targeted
+utilisation degrades, or retrieval quality falls short of the dense baseline ---
+the contribution lies in characterising the failure mode and proposing targeted
 improvements to the quantization objective.
 
 %% ---------------------------------------------------------------
@@ -136,23 +153,59 @@ number of indexed candidates.
 %% ---------------------------------------------------------------
 \section{Problem Formulation}
 
-\subsection{Task definition}
+\subsection{Project definition}
 
-Given a query consisting of a chest X-ray image $q_i$ and optional clinical
-context $q_t$ (e.g.\ a brief indication or prior finding), retrieve a ranked
-list of relevant radiology studies from a fixed corpus $\mathcal{C}$.
+We define the project as \textbf{generative multimodal retrieval for
+fine-grained chest X-ray case retrieval}.
+Given a query in the form of a CXR image, a textual clinical description
+(e.g.\ the impression or indication), or both, the system retrieves
+\emph{clinically relevant historical cases} from a study-level corpus.
+Each retrieved item is a study-level case that may contain one or more
+radiograph images, free-text report sections, and structured pathology labels.
 
-Following GENIUS notation, the system generates a discrete identifier
-$T_c = (t^c_1, \ldots, t^c_M)$ for the most relevant candidate $c$:
+\textbf{Retrieval setting.}
+The primary setting is \emph{non-overlapped case retrieval}: the cases used for
+validation and testing do not appear in the training corpus.
+This reflects the realistic clinical deployment scenario in which a new,
+previously unseen case is presented to the system and similar historical cases
+are retrieved to support diagnostic reasoning.
+A \emph{fixed-corpus} setting, in which queries may self-match (i.e.\ a case
+can retrieve itself), is a simpler configuration and may serve as an
+exploratory comparison, but it is not the main evaluation target.
+
+\subsection{Generative retrieval formulation}
+
+Generative retrieval replaces nearest-neighbour search with autoregressive
+decoding of a discrete \emph{semantic case identifier}.
+Each study-level case $c$ is encoded into a fixed-length ID sequence
+$T_c = (t^c_1, \ldots, t^c_M)$ via the following pipeline:
+
+\[
+\underbrace{(\text{image}_c,\; \text{report}_c)}_{\text{case}}
+\;\xrightarrow{\text{medical encoder}}\;
+\mathbf{e}_c \in \mathbb{R}^d
+\;\xrightarrow{\text{quantizer}}\;
+T_c \in \mathcal{V}^M
+\]
+
+where $\mathcal{V}$ is the codebook vocabulary (4096 tokens per level) and
+$M = 8$ semantic levels are used, following the GENIUS configuration.
+
+Given a query $q$ (image, text, or both), the retriever generates the
+identifier of the most relevant case autoregressively:
 \[
 t^c_k = \arg\max_{t \in \mathcal{V}} \left[
     \log p\!\left(t \;\middle|\; \mathbf{q},\, t^c_{<k};\, \theta\right)
 \right],
 \]
-where $\mathcal{V}$ is the codebook vocabulary and $\mathbf{q}$ is the query
-embedding.
-Candidate generation is constrained by a trie over valid identifier sequences,
-ensuring the decoder can only produce IDs that exist in the candidate pool.
+where $\mathbf{q}$ is the query embedding produced by the same medical encoder.
+Generation is constrained by a trie over valid identifier sequences, ensuring
+only IDs that correspond to corpus entries can be produced.
+
+A key property of this formulation is that the semantic ID is directly the case
+label: since each identifier corresponds to exactly one study, retrieval
+evaluation can be performed directly on the generated ID without a separate
+re-ranking or index lookup step.
 
 \subsection{Candidate representation}
 
@@ -164,41 +217,49 @@ Each candidate is defined at the \textbf{study level}:
     \textit{Impression} sections of the associated radiology report,
     following standard practice in the CXR literature.
     \item \textbf{Candidate modality}: \texttt{image,text} (multimodal).
-    \item \textbf{Query modality}: \texttt{image} (image-only query at test time,
-    reflecting realistic clinical use where a clinician searches by image).
+    \item \textbf{Query modality}: \texttt{image}, \texttt{text}, or
+    \texttt{image,text}, depending on the query type.
+    The initial evaluation uses image-only queries, reflecting the realistic
+    clinical scenario in which a clinician searches by radiograph alone.
 \end{itemize}
 
-Multimodal candidates (\texttt{image,text}) are used rather than text-only
-(\texttt{image$\to$text}, MBEIR task~3): combining the frontal image and report
-provides richer quantizer supervision, and the image component is already
-available at retrieval time.
-The resulting M-BEIR task type is \texttt{image$\to$image,text} (task~9),
-which was absent from the original \texttt{MBEIR\_TASK} mapping in
-\texttt{utils.py}; the entry has been added.
-Note that query modality is \texttt{image} only (\texttt{query\_txt = None})
---- this is intentional and distinct from task~7 (\texttt{image,text$\to$image}),
-which requires a text component in the query.
+Multimodal candidates (\texttt{image,text}) are used rather than text-only or
+image-only: the combined representation provides richer quantizer supervision
+and preserves all information available at indexing time.
+The M-BEIR task type for image query against multimodal candidates is
+\texttt{image$\to$image,text} (task~9), which was absent from the original
+\texttt{MBEIR\_TASK} mapping in \texttt{utils.py} and has been added.
+Note that this is distinct from task~7 (\texttt{image,text$\to$image}), which
+requires a multimodal query.
 
 \subsection{Research questions}
 
-\textbf{Primary:}
+\textbf{RQ1 (primary):}
 Can the generative retrieval paradigm, adapted to the medical domain via a
-biomedical vision-language encoder, learn sufficiently discriminative discrete
-identifiers for fine-grained CXR case retrieval?
+frozen biomedical vision-language encoder, learn sufficiently discriminative
+semantic case identifiers for fine-grained CXR case retrieval under the
+non-overlapped setting?
 
-\textbf{Secondary:}
-\begin{itemize}[itemsep=2pt]
-    \item Does the trained system generalise across datasets
-    (MIMIC-CXR $\to$ IU~X-Ray), or does it overfit to MIMIC-CXR-specific
-    acquisition and reporting conventions?
-    \item How does generative retrieval compare to an embedding-based baseline
-    using the same BiomedCLIP encoder?
-    \item What are the failure modes of residual quantization under visual
-    homogeneity? Does codebook collapse occur, and at what granularity?
-    \item If the standard pipeline is insufficient, which training signal ---
-    report-aware, disease-aware, or hard-negative-aware --- most effectively
-    improves identifier discriminability?
-\end{itemize}
+\textbf{RQ2:}
+How does generative retrieval compare to an embedding-based dense retrieval
+baseline using the same BiomedCLIP encoder?
+This comparison isolates the contribution of the generative framework from
+that of the encoder.
+
+\textbf{RQ3:}
+What are the failure modes of residual quantization under visual homogeneity?
+Does codebook collapse occur, and at what level of the quantization hierarchy
+does discriminability degrade?
+
+\textbf{RQ4:}
+If the standard pipeline is insufficient, which training signal ---
+report-aware, disease-aware, or hard-negative-aware supervision --- most
+effectively improves identifier discriminability?
+
+\textbf{RQ5:}
+Does the trained system generalise across datasets
+(MIMIC-CXR $\to$ IU~X-Ray), or does it overfit to MIMIC-CXR-specific
+acquisition and reporting conventions?
 
 %% ---------------------------------------------------------------
 \section{Proposed Approach}
@@ -269,14 +330,22 @@ is reinitialised randomly.
 \subsection{Evaluation protocol}
 \label{sec:eval}
 
+\textbf{Retrieval setting.}
+All evaluations use the non-overlapped setting: queries are drawn from the
+MIMIC-CXR test split, which is patient-disjoint from the training corpus.
+A query case cannot appear in the candidate pool, so self-match is not possible.
+This mirrors the intended clinical deployment scenario and is the harder,
+more realistic evaluation condition.
+
 \textbf{Ground truth definition.}
 Retrieval positives are defined by shared CheXpert pathology labels: a
-candidate is considered positive for a given query if the two studies share at
+candidate is considered relevant to a given query if the two studies share at
 least one active (positive) pathology label as assigned by the CheXpert
 labeller.
 This definition is clinically interpretable, stable across dataset splits, and
-does not require additional annotation.
-Its main limitation --- it is insensitive to severity and laterality --- is
+requires no additional annotation beyond the labels distributed with
+MIMIC-CXR-JPG.
+Its main limitation --- insensitivity to severity and laterality --- is
 acknowledged and treated as a direction for future refinement.
 
 \textbf{Metrics.}
@@ -284,11 +353,11 @@ Following the M-BEIR convention: Recall@5 and Recall@10.
 For cross-dataset generalisation (IU~X-Ray), the same metrics apply.
 
 \textbf{Baseline.}
-The primary comparison is an embedding-based retrieval system using the same
-frozen BiomedCLIP encoder: query and candidate embeddings are compared by
-cosine similarity, with no learned quantization or decoder.
-This isolates the contribution of the generative retrieval framework from the
-representation quality of the encoder.
+The primary comparison is an embedding-based dense retrieval system using the
+same frozen BiomedCLIP encoder: query and candidate embeddings are compared by
+cosine similarity with no learned quantization or autoregressive decoder.
+This comparison isolates the contribution of the generative retrieval framework
+from the representation quality of the encoder itself.
 
 %% ---------------------------------------------------------------
 \section{Technical Implementation}
