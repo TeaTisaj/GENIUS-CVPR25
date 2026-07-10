@@ -22,6 +22,10 @@ import numpy as np
 from einops import rearrange, repeat, reduce, pack, unpack
 from torch.nn.utils import weight_norm
 from vector_quantize_pytorch import VectorQuantize, ResidualVQ
+# Import the library's OWN entropy helper (not a reimplementation): its exact eps
+# clamping is load-bearing for numerical equivalence with the library's fused
+# codebook-diversity loss in the modality-split path below.
+from vector_quantize_pytorch.vector_quantize_pytorch import entropy as _vq_entropy
 
 # Local modules
 from models.uniir_clip import utils
@@ -92,10 +96,48 @@ class ContrastiveLoss(nn.Module):
         logits_per_x = logits_per_x / temp
         logits_per_y = logits_per_x.T
 
-        total_loss = (F.cross_entropy(logits_per_x, labels) 
+        total_loss = (F.cross_entropy(logits_per_x, labels)
                      + F.cross_entropy(logits_per_y, labels)) / 2
 
         return total_loss
+
+    def forward_explicit_neg(self, q: torch.Tensor, pos: torch.Tensor, neg: torch.Tensor,
+                              temp: Optional[float] = None) -> torch.Tensor:
+        """Retrieval-aware RQ refinement feasibility study, Component 5 (L_ret).
+
+        Explicit-negative-set contrastive loss (mentor's L_ret), as opposed to
+        this class's default `forward`, which uses in-batch negatives with a
+        diagonal-positive assumption:
+
+            -log( exp(sim(q,pos)/T) / (exp(sim(q,pos)/T) + sum_i exp(sim(q,neg_i)/T)) )
+
+        Implemented as cross-entropy with the positive placed at logit index 0,
+        numerically identical to the explicit formula above.
+
+        Args:
+            q: [bs, d] query representations.
+            pos: [bs, d] positive representations.
+            neg: [bs, K, d] explicit hard/random negative representations.
+            temp: optional temperature override.
+
+        Returns:
+            Scalar loss.
+        """
+        if temp is None:
+            temp = self.temperature
+
+        assert self.metric == 'cos', "forward_explicit_neg only supports metric='cos'."
+
+        q = F.normalize(q, dim=-1)
+        pos = F.normalize(pos, dim=-1)
+        neg = F.normalize(neg, dim=-1)
+
+        pos_sim = (q * pos).sum(dim=-1) / temp  # [bs]
+        neg_sim = torch.einsum('bd,bkd->bk', q, neg) / temp  # [bs, K]
+
+        logits = torch.cat([pos_sim.unsqueeze(1), neg_sim], dim=1)  # [bs, K+1], positive at index 0
+        labels = torch.zeros(q.shape[0], dtype=torch.long, device=q.device)
+        return F.cross_entropy(logits, labels)
 
 def cdist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """Compute pairwise Euclidean distances between two sets of vectors.
@@ -225,10 +267,171 @@ class RQ(nn.Module):
 
         # Set up codebook configuration
         self.codebook_vocab = config.codebook_config.codebook_vocab
-        self.codebook_level = (config.codebook_config.codebook_level + 1 
-                             if self.modality_index 
+        self.codebook_level = (config.codebook_config.codebook_level + 1
+                             if self.modality_index
                              else config.codebook_config.codebook_level)
         self.level_indicators = list(string.ascii_lowercase[:self.codebook_level])
+
+        # Optional soft code-balance regularization on the semantic levels only
+        # (the modality level's skew is intentional, not collapse, so it is
+        # built separately below via self.vq and never receives this kwarg).
+        # Uses vector_quantize_pytorch's built-in codebook_diversity_loss:
+        # a softmax-over-scaled-distances entropy bonus that is differentiable
+        # through the encoder even though the codebook itself is EMA-updated
+        # (learnable_codebook=False below) rather than learned via backprop.
+        balance_loss_config = config.get("balance_loss_config", {})
+        balance_enabled = balance_loss_config.get("enabled", False)
+        balance_lambda_raw = balance_loss_config.get("lambda", 0.0) if balance_enabled else 0.0
+        # compute_single_batch applies a blanket `1e2 *` to the whole rq_loss
+        # (commitment + this diversity term combined) below. Pre-divide by that
+        # same factor here so balance_loss_config.lambda is interpretable on
+        # the same O(1-10) scale as cl_loss/mse_loss/accuracy, not 100x larger
+        # for an identical-looking config value.
+        self.balance_lambda = balance_lambda_raw / 1e2
+        self.balance_temperature = balance_loss_config.get("temperature", 100.0)
+
+        # Direction-aware (modality-split) balance regularization (RQ2 study).
+        # The established, mentor-reviewed finding is that T->I and I->T retrieval
+        # react in OPPOSITE directions to the shared balance strength: strong
+        # balance helps T->I but destroys I->T. lambda_img / lambda_txt let a
+        # single model apply a different balance strength to image-target vs
+        # text-target rows so both directions can be tuned independently.
+        lambda_img = balance_loss_config.get("lambda_img", None)
+        lambda_txt = balance_loss_config.get("lambda_txt", None)
+        self.balance_split_enabled = balance_enabled and (lambda_img is not None or lambda_txt is not None)
+        if self.balance_split_enabled:
+            # A nonzero shared `lambda` is ALSO fed to ResidualVQ below as
+            # codebook_diversity_loss_weight (self.balance_lambda), so the
+            # library's own fused diversity term would then fire on top of our
+            # manual per-row one -- double-counting the same entropy. Split mode
+            # must therefore run with the shared lambda absent/zero, which makes
+            # self.balance_lambda == 0.0 and disables the library's fused path
+            # (has_codebook_diversity_loss is False for every layer).
+            assert self.balance_lambda == 0.0, (
+                "balance_loss_config: cannot set a nonzero shared `lambda` together with "
+                "lambda_img/lambda_txt. The shared lambda is passed to ResidualVQ's "
+                "codebook_diversity_loss_weight and would double-count the diversity term "
+                "against the manual modality-split path. Remove the `lambda` key (or set it "
+                "to 0.0) when using lambda_img/lambda_txt."
+            )
+        # Same /1e2 pre-division convention as self.balance_lambda so YAML values
+        # stay on the same O(1-10) scale (compute_single_batch multiplies the whole
+        # rq_loss by 1e2 downstream).
+        self.balance_lambda_img = float(lambda_img or 0.0) / 1e2
+        self.balance_lambda_txt = float(lambda_txt or 0.0) / 1e2
+
+        # ============================================================
+        # Retrieval-aware RQ refinement feasibility study (Components 3-5).
+        # See extensions/retrieval_aware_id_refinement/ and
+        # .claude/plans/so-this-is-the-swirling-quiche.md. Fully additive:
+        # when retrieval_aware_config.enabled is false (the default for every
+        # config outside this study), none of this branch is exercised and
+        # compute_single_batch's original code path runs byte-for-byte
+        # unchanged (see Component 3's equivalence requirement).
+        # ============================================================
+        retrieval_aware_config = config.get("retrieval_aware_config", {})
+        self.retrieval_aware_enabled = bool(retrieval_aware_config.get("enabled", False))
+        # balance_split_enabled (lambda_img/lambda_txt) and retrieval_aware_enabled
+        # are separate, mutually-exclusive dispatch branches in compute_single_batch,
+        # each recomposing rq_loss its own way; they must never both be active.
+        assert not (self.balance_split_enabled and self.retrieval_aware_enabled), (
+            "balance_split_enabled (lambda_img/lambda_txt) and retrieval_aware_enabled are "
+            "mutually exclusive code paths; enable at most one of them."
+        )
+        self.hard_neg_num = int(retrieval_aware_config.get("hard_neg_num", 20))
+        self.retrieval_aware_beta = float(retrieval_aware_config.get("beta", 1.0))
+        self.prefix_omega_decay = float(retrieval_aware_config.get("prefix_omega_decay", 0.7))
+        # [Added post-feasibility-run, per real-cluster finding] Criterion 5's dense
+        # Recall@K probe showed a severe T->I collapse (~98%->~5-7%) in BOTH the full
+        # method AND its continued-training-no-new-losses control equally -- consistent
+        # with EMA codebook churn on the narrow 18K-query training subset (rare codes
+        # falling below `threshold_ema_dead_code` and getting randomly reassigned),
+        # not a property of the retrieval-aware method itself. `freeze_codebook=True`
+        # (passed through to each level's `VectorQuantize.forward`, gates the
+        # `self.training and ema_update and not freeze_codebook` check at
+        # vector_quantize_pytorch.py:746) stops EMA codebook updates entirely while
+        # still allowing gradient flow to the encoder (commitment/diversity/L_ret all
+        # still backprop normally) -- isolating whether the method's signal survives
+        # once codebook churn is removed as a confound.
+        self.freeze_codebook = bool(retrieval_aware_config.get("freeze_codebook", False))
+
+        # Component 4 [Fable fix]: self.balance_lambda above (balance_lambda_raw / 1e2)
+        # exists ONLY to gate/scale the library's OWN fused per-layer diversity term
+        # (used by the ORIGINAL, non-retrieval-aware global-lambda mechanism, and here
+        # also just to keep `codebook_diversity_loss_weight > 0` so the library actually
+        # computes `loss_breakdown.codebook_diversity` at all -- see VectorQuantize's
+        # `has_codebook_diversity_loss` gate). It is NOT the layer-wise budget Lambda used
+        # below. Reusing self.balance_lambda as Lambda would silently run this study at
+        # Lambda=0.03 instead of the intended Lambda=3.0 (100x too small, no error, just a
+        # quietly-degenerate feasibility study). Lambda is instead taken directly,
+        # undivided, from the same YAML field:
+        self.balance_budget = float(balance_loss_config.get("lambda", 0.0))  # Lambda, undivided
+        if self.retrieval_aware_enabled:
+            assert self.balance_budget > 0, (
+                "retrieval_aware_config.enabled=True requires a non-zero "
+                "balance_loss_config.lambda (the layer-wise budget Lambda) -- with "
+                "Lambda<=0, lambda_l is always all-zeros regardless of "
+                "balance_level_logits, and every one of the mentor's feasibility "
+                "criteria would trivially and misleadingly 'pass'. Set "
+                "balance_loss_config.enabled=true and lambda > 0 (e.g. 3.0, matching "
+                "the existing 'strong' variant) explicitly in the feasibility config."
+            )
+
+        # Component 4 (Method 1): layer-wise learnable balance weights a_l, one per
+        # semantic level (the modality level, index 0, is excluded -- its skew is
+        # intentional, not collapse, exactly as for self.balance_lambda above).
+        #
+        # [Fable-fix-driven design decision, see this repo's task report for full
+        # rationale] Of the plan's two explicitly-offered "preferred" sub-options for
+        # learning a_l from a VALIDATION retrieval objective (mentor's point 5) --
+        # (a) a literal DARTS-style one-step-lookahead second-order backprop, or
+        # (b) a cheaper validation-guided perturbation ("perturb the logits, evaluate
+        # a held-out batch, keep the change only if it helps") -- this implementation
+        # uses (b). Both are valid instances of the plan's "Preferred, faithful to the
+        # mentor's spec" option (not the "explicit fallback" of a frozen, unlearned
+        # prior); (a) was judged too risky to get right without live GPU debugging
+        # (constructing a differentiable one-step optimizer lookahead blind is exactly
+        # the kind of thing the plan's own Fable-fix review process was created to catch
+        # mistakes in), while (b) is a well-defined, easily-unit-testable zeroth-order
+        # update rule that still uses genuine validation L_ret feedback, not the
+        # training objective itself (which the plan shows collapses to a degenerate
+        # one-hot allocation if used directly).
+        #
+        # Consequently, `balance_level_logits` is registered as a BUFFER (not an
+        # `nn.Parameter`): it is NEVER intended to receive an autograd gradient
+        # through the normal backward pass (there is none to receive here -- L_bal
+        # is never part of the single real `.backward()` call, only used via
+        # `torch.autograd.grad` in the Component 6 gradient-projection step, which
+        # differentiates w.r.t. the encoder, not w.r.t. a_l), and buffers are never
+        # returned by `named_parameters()` at all, so it is automatically excluded
+        # from every optimizer parameter group in train.py's `filter_parameters`
+        # -- see engine.py's `perturb_and_maybe_update_balance_logits` for the
+        # actual update rule, called from `train_one_epoch_retrieval_aware`.
+        #
+        # [Bug found and fixed during this task's own local verification, not
+        # anticipated by the plan text] `persistent=False` is required here, not
+        # just a style choice: a PERSISTENT buffer (or an `nn.Parameter`, as this
+        # was first implemented) would appear in `state_dict()`, and since this
+        # attribute is new, `model.load_state_dict(old_checkpoint, strict=True)`
+        # would then raise `Missing key(s): "balance_level_logits"` for every
+        # checkpoint saved before this change existed -- breaking `strict=True`
+        # loads throughout this repo wherever an RQ checkpoint is loaded (this
+        # extension's own `mine_hard_negatives.py`/`clarify_balance_regularization.py`/
+        # the new warm-start loader in `train.py`, but also any other, unrelated
+        # pre-existing script that loads an RQ checkpoint with `strict=True`).
+        # `persistent=False` excludes it from `state_dict()` entirely, so old
+        # checkpoints keep loading exactly as before. This also means a
+        # retrieval-aware run's OWN saved checkpoints do not carry the learned
+        # lambda_l forward either -- by design: the plan's own diagnostics
+        # (`check_feasibility_criteria.py`) source the learned lambda_l
+        # trajectory from the printed/logged values (Component 4's explicit
+        # "log lambda_l ... every print_freq steps" requirement), not from
+        # reloading a checkpoint file.
+        num_semantic_levels = self.codebook_level - 1 if self.modality_index else self.codebook_level
+        self.num_semantic_levels = num_semantic_levels
+        self.register_buffer(
+            'balance_level_logits', torch.zeros(num_semantic_levels), persistent=False
+        )  # a_l
 
         # Initialize Residual Vector Quantization
         if self.modality_index:
@@ -246,15 +449,17 @@ class RQ(nn.Module):
 
         self.residual_rq = ResidualVQ(
             dim=feature_dim,
-            codebook_dim=feature_dim, 
-            num_quantizers=self.codebook_level, 
-            codebook_size=self.codebook_vocab, 
+            codebook_dim=feature_dim,
+            num_quantizers=self.codebook_level,
+            codebook_size=self.codebook_vocab,
             kmeans_init=True,
-            kmeans_iters=1000, 
+            kmeans_iters=1000,
             learnable_codebook=False,
-            ema_update=True, 
+            ema_update=True,
             threshold_ema_dead_code=2,
-            decay=0.9
+            decay=0.9,
+            codebook_diversity_loss_weight=self.balance_lambda,
+            codebook_diversity_temperature=self.balance_temperature,
         )
 
         if self.modality_index:
@@ -312,18 +517,320 @@ class RQ(nn.Module):
             transformed_row.append(f"<{level_indicator}{new_value}>")
         return separator.join(transformed_row)
 
+    def _quantize_with_breakdown(self, x: torch.Tensor):
+        """Retrieval-aware RQ refinement feasibility study, Component 3.
+
+        A unified manual per-level quantization loop exposing a clean per-level
+        loss breakdown, used (instead of `self.residual_rq(x, ...)`) only when
+        `self.retrieval_aware_enabled`.
+
+        Why this exists: `ResidualVQ.forward` (vector_quantize_pytorch's
+        `residual_vq.py`) calls each level's `VectorQuantize.forward` WITHOUT
+        `return_loss_breakdown=True`, so it only ever returns a single FUSED
+        `loss` per level (commitment + codebook-diversity summed together) --
+        enough to reproduce today's `rq_loss.mean()` (L_RQ), but not enough to
+        isolate a clean `L_bal^(l)` for Component 6's gradient-conflict
+        projection, which needs the diversity term on its own.
+
+        This bypasses `self.residual_rq.__call__` and calls each level's
+        `VectorQuantize.forward(..., return_loss_breakdown=True)` directly,
+        replicating `ResidualVQ.forward`'s residual-accumulation loop manually.
+        This is a faithful replication, not an approximation: this project's
+        `ResidualVQ` is constructed with `quantize_dropout` left at its default
+        (False) and `quant_grad_frac` left at its default (0.), so neither the
+        "should_quantize_dropout" branch nor `frac_gradient`'s partial
+        straight-through blending (`frac_gradient(t, 0.) == t.detach()`,
+        confirmed by reading `vector_quantize_pytorch/residual_vq.py`) ever
+        activates here -- the loop below is exactly what `ResidualVQ.forward`
+        does in this project's configuration, just unrolled with per-level
+        loss access. `project_in`/`project_out` are `nn.Identity()` in this
+        project's configuration too (dim == codebook_dim == feature_dim, so
+        `requires_projection` is False in `ResidualVQ.__init__`), so they are
+        correctly omitted here exactly as the original call site never uses
+        them either.
+
+        Numerically identical to `self.residual_rq(x)` for `quantized_out`/`Is`
+        (verified by
+        `extensions/retrieval_aware_id_refinement/test_quantize_with_breakdown_equivalence.py`);
+        when `retrieval_aware_enabled` is False, this method is never called and
+        `compute_single_batch`'s original path is completely untouched.
+
+        Args:
+            x: input of shape `(1, N, dim)` -- call with the SAME
+                `encode_feature.unsqueeze(0)` shape convention the original
+                `self.residual_rq(encode_feature.unsqueeze(0), ...)` call site
+                uses; squeeze(0) the `quantized_out`/`Is` outputs afterward the
+                same way the original call site does (skipping the unsqueeze
+                would silently change how the EMA codebook's internal batch-dim
+                bookkeeping treats the input).
+
+        Returns:
+            quantized_out: [1, N, dim] summed reconstruction (same shape/values
+                as `self.residual_rq(x)`'s first return value).
+            Is: [1, N, codebook_level] stacked per-level code indices.
+            commit_losses: list of `codebook_level` scalar commitment-loss
+                tensors (one per level), each still attached to the autograd
+                graph through the encoder.
+            diversity_losses: list of `codebook_level` scalar
+                codebook-diversity-loss tensors (one per level); components
+                where `has_codebook_diversity_loss` is False (i.e.
+                `codebook_diversity_loss_weight <= 0` for that layer) will be
+                the library's constant `self.zero` buffer (no gradient).
+            level_quantized: list of `codebook_level` `[1, N, dim]` tensors,
+                each level's OWN contribution to the sum (NOT yet
+                accumulated) -- used by Component 5 to build prefix-sum
+                embeddings without re-deriving them from `quantized_out`.
+        """
+        residual = x
+        quantized_out = torch.zeros_like(x)
+        all_indices, commit_losses, diversity_losses, level_quantized = [], [], [], []
+        for level_idx, vq in enumerate(self.residual_rq.layers):
+            # NOTE: rand_quantize_dropout_fixed_seed is a ResidualVQ.forward-only
+            # kwarg, not accepted by the per-layer VectorQuantize.forward -- do not
+            # pass it here. Irrelevant anyway since quantize_dropout=False in this
+            # project's ResidualVQ config (see docstring above).
+            # NOTE: return_loss_breakdown=True yields a 4-tuple (quantize, embed_ind,
+            # loss, loss_breakdown), not a 3-tuple.
+            # freeze_codebook=self.freeze_codebook: see RQ.__init__'s comment on
+            # self.freeze_codebook (post-feasibility-run addition) -- stops EMA
+            # codebook updates (vector_quantize_pytorch.py:746's
+            # `self.training and ema_update and not freeze_codebook` gate) while
+            # leaving gradient flow to the encoder untouched.
+            quantized, embed_indices, _fused_loss, loss_breakdown = vq(
+                residual, return_loss_breakdown=True, freeze_codebook=self.freeze_codebook
+            )
+            commit_losses.append(loss_breakdown.commitment)
+            diversity_losses.append(loss_breakdown.codebook_diversity)
+            level_quantized.append(quantized)  # this level's OWN contribution (not yet summed)
+            residual = residual - quantized.detach()  # quant_grad_frac=0. => frac_gradient(t,0)==t.detach()
+            quantized_out = quantized_out + quantized
+            all_indices.append(embed_indices)
+        Is = torch.stack(all_indices, dim=-1)
+        return quantized_out, Is, commit_losses, diversity_losses, level_quantized
+
+    def _quantize_with_breakdown_modality_split(self, x: torch.Tensor,
+                                                img_mask: torch.Tensor,
+                                                txt_mask: torch.Tensor):
+        """Direction-aware (modality-split) balance regularization (RQ2 study).
+
+        Same per-level residual-accumulation loop as `_quantize_with_breakdown`,
+        but instead of the library's single fused codebook-diversity term (one
+        shared lambda for every row), it recomputes that term MANUALLY, per row,
+        from the raw `distances` tensor so each row can be weighted by a
+        modality-dependent lambda -- lambda_img for image-target rows, lambda_txt
+        for text-target rows.
+
+        Why a forward hook: the raw `distances` are exposed neither by
+        `VectorQuantize.forward`'s return value nor by its `loss_breakdown`
+        (`loss_breakdown.codebook_diversity` is the already-reduced, batch-wide
+        scalar, not split by modality). They are only available as the third
+        element of `vq._codebook`'s forward output
+        (`(quantize, embed_ind, dist)`, vector_quantize_pytorch.py:754), so we
+        capture them via a forward hook on that submodule and replay the
+        library's exact entropy math (vector_quantize_pytorch.py:1244-1246). When
+        lambda_img == lambda_txt == the shared lambda, this recomposes the fused
+        scalar EXACTLY (proven by the equivalence test), because the library's
+        `avg_prob = reduce(prob, '... n l -> n l', 'mean')` keeps entropy
+        per-row under the batch-of-1 convention, so `lambda * mean_n(-ent_n)` and
+        `mean_n(w_n * (-ent_n))` coincide when `w_n == lambda`.
+
+        Args:
+            x: [1, N, dim] -- same `encode_feature.unsqueeze(0)` convention as
+                `_quantize_with_breakdown`.
+            img_mask, txt_mask: per-row modality masks, each reshapeable to N rows
+                (e.g. the [N, 1] masks built in `compute_single_batch`). Not
+                mutually exclusive: a multimodal row is both image and text.
+
+        Returns:
+            quantized_out: [1, N, dim] summed reconstruction (same as
+                `_quantize_with_breakdown`).
+            Is: [1, N, codebook_level] stacked per-level code indices.
+            commit_losses: list of `codebook_level` scalar commitment losses.
+            weighted_div_losses: list of `codebook_level` scalar modality-weighted
+                diversity losses (`-(w * ent).mean()`); level 0 (the modality
+                level) is a hard zero, matching that level being built with no
+                diversity kwarg at all -- its skew is intentional, not collapse.
+        """
+        im = img_mask.reshape(-1).float()
+        tm = txt_mask.reshape(-1).float()
+        n_rows = im.shape[0]
+        # Per-row balance weight. Masks are not mutually exclusive, so a
+        # multimodal row gets the MEAN of the two lambdas. clamp(min=1) only
+        # guards a hypothetical all-zero-mask row from a 0/0 -- such a row has a
+        # zero numerator and so contributes nothing regardless.
+        w = (im * self.balance_lambda_img + tm * self.balance_lambda_txt) / (im + tm).clamp(min=1.0)
+
+        residual = x
+        quantized_out = torch.zeros_like(x)
+        all_indices, commit_losses, weighted_div_losses = [], [], []
+        for level_idx, vq in enumerate(self.residual_rq.layers):
+            captured = {}
+
+            def _capture_distances(module, inp, out, _store=captured):
+                # _codebook.forward returns (quantize, embed_ind, dist); grab the
+                # LAST call's distances (this project sets no
+                # in_place_codebook_optimizer, so _codebook is called exactly once
+                # per VectorQuantize.forward).
+                _store['distances'] = out[2]
+
+            handle = vq._codebook.register_forward_hook(_capture_distances)
+            try:
+                quantized, embed_indices, _fused_loss, loss_breakdown = vq(
+                    residual, return_loss_breakdown=True, freeze_codebook=self.freeze_codebook
+                )
+            finally:
+                # Always detach the hook, even if vq(...) raises, so we never leak
+                # a hook onto a shared submodule across calls.
+                handle.remove()
+
+            commit_losses.append(loss_breakdown.commitment)
+
+            if self.modality_index and level_idx == 0:
+                # The modality level never receives balance regularization,
+                # mirroring the fused path where self.vq is built with no
+                # diversity kwarg. Append a zero of the right device/dtype.
+                weighted_div_losses.append(torch.zeros((), device=x.device, dtype=x.dtype))
+            else:
+                distances = captured['distances']
+                # Exact replay of vector_quantize_pytorch.py:1244-1246. entropy()
+                # is the library's own helper (its eps clamping is load-bearing for
+                # exact equivalence); reduce() uses the identical einops pattern.
+                prob = (distances * self.balance_temperature).softmax(dim=-1)
+                avg_prob = reduce(prob, '... n l -> n l', 'mean')
+                ent = _vq_entropy(avg_prob)  # [N]: per-row entropy under batch-of-1
+                # If the [1, N, dim] batch-of-1 convention ever breaks upstream,
+                # `ent` would not be one-per-row and the modality weighting would
+                # be silently misaligned. This assertion is what catches that.
+                assert ent.shape[0] == n_rows, (
+                    f"modality-split balance: per-row entropy has {ent.shape[0]} rows but "
+                    f"expected {n_rows} (the [1, N, dim] batch-of-1 convention is broken)."
+                )
+                weighted_div_losses.append(-(w * ent).mean())
+
+            residual = residual - quantized.detach()  # quant_grad_frac=0. => detach STE residual
+            quantized_out = quantized_out + quantized
+            all_indices.append(embed_indices)
+
+        Is = torch.stack(all_indices, dim=-1)
+        return quantized_out, Is, commit_losses, weighted_div_losses
+
+    def _compute_retrieval_aware_L_ret(self, level_quantized: List[torch.Tensor], bs: int,
+                                        hard_neg_pool: Dict, gpu_id) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """Retrieval-aware RQ refinement feasibility study, Component 5.
+
+        `L_ret` (+ prefix-depth version): a retrieval-aware contrastive loss
+        that makes the query closer to the positive ID representation than to
+        explicit hard/random-negative ID representations, computed at every
+        prefix depth `l = 1..num_semantic_levels` (mentor's point 4) and
+        combined with geometric-decay weights `omega_l` favoring earlier levels
+        (mentor's explicit instruction: "give earlier levels larger weights
+        because early prefixes determine pruning during constrained decoding").
+
+        Hard negatives arrive as the SEPARATE `hard_neg_pool` batch key built by
+        `HardNegativeAugmentedDataset`/`hard_negative_collate_fn` (Component 2's
+        corrected design) -- encoded here through their OWN
+        `self.encoder`/`_quantize_with_breakdown` forward call, kept entirely
+        distinct from the `q_emb`/`p_emb` used by `mse_loss`/`cl_loss`/accuracy.
+
+        Args:
+            level_quantized: per-level `[2*bs, dim]` tensors (query+pos
+                concatenated, same layout as `q_emb`/`p_emb` elsewhere in
+                `compute_single_batch`) from the MAIN `_quantize_with_breakdown`
+                call already performed on the query+pool batch.
+            bs: number of queries (== number of positives) in this batch.
+            hard_neg_pool: dict with `img_emb`/`txt_emb`/`img_mask`/`txt_mask`,
+                each of shape `[bs * hard_neg_num, ...]` (flattened by
+                `hard_negative_collate_fn`).
+            gpu_id: device to move `hard_neg_pool` tensors to.
+
+        Returns:
+            L_ret: scalar, `sum_l omega_l * L_ret^(l)`.
+            L_ret_per_level: list of `num_semantic_levels` scalar tensors
+                (`omega_l * L_ret^(l)`, already weighted), for Component 6 to
+                `torch.autograd.grad` per level.
+        """
+        hn_img_mask = hard_neg_pool['img_mask'].reshape(-1).unsqueeze(-1).to(gpu_id, non_blocking=True)
+        hn_txt_mask = hard_neg_pool['txt_mask'].reshape(-1).unsqueeze(-1).to(gpu_id, non_blocking=True)
+        hn_img_emb = hard_neg_pool['img_emb'].reshape(-1, hard_neg_pool['img_emb'].size(-1)).to(gpu_id, non_blocking=True)
+        hn_txt_emb = hard_neg_pool['txt_emb'].reshape(-1, hard_neg_pool['txt_emb'].size(-1)).to(gpu_id, non_blocking=True)
+
+        # Explicit, asserted slice boundary (Component 2's corrected design) --
+        # never inferred from shape alone without checking it first.
+        expected_n = bs * self.hard_neg_num
+        assert hn_img_emb.shape[0] == expected_n, (
+            f"hard_neg_pool batch size {hn_img_emb.shape[0]} != bs*hard_neg_num "
+            f"({bs}*{self.hard_neg_num}={expected_n}); Component 2 dataset/collate wiring mismatch."
+        )
+
+        hn_encode_feature = self.encoder(hn_img_emb, hn_txt_emb, hn_img_mask, hn_txt_mask)
+        hn_encode_feature = F.normalize(hn_encode_feature)
+
+        neg_quant, _neg_Is, _neg_commit, _neg_diversity, neg_level_quantized = self._quantize_with_breakdown(
+            hn_encode_feature.unsqueeze(0)
+        )
+        neg_quant = neg_quant.squeeze(0)
+        neg_level_quantized = [lv.squeeze(0) for lv in neg_level_quantized]
+        assert neg_quant.shape[0] == expected_n, (
+            f"neg_quant.shape[0]={neg_quant.shape[0]} != bs*hard_neg_num={expected_n}"
+        )
+
+        q_level = [lv[:bs] for lv in level_quantized]          # queries, per level, [bs, dim]
+        pos_level = [lv[bs:2 * bs] for lv in level_quantized]  # positives, per level, [bs, dim]
+        neg_level = [lv.view(bs, self.hard_neg_num, -1) for lv in neg_level_quantized]  # [bs, K, dim]
+
+        start_level = 1 if self.modality_index else 0  # skip modality level (index 0) in prefix sums
+        num_levels = self.num_semantic_levels
+
+        # omega_l: geometric decay, normalized to sum to 1, earlier levels weighted
+        # larger (mentor's point 4, literal instruction).
+        raw_omega = torch.tensor(
+            [self.prefix_omega_decay ** l for l in range(num_levels)],
+            device=q_level[0].device, dtype=q_level[0].dtype,
+        )
+        omega_l = raw_omega / raw_omega.sum()
+
+        L_ret_per_level = []
+        q_prefix = torch.zeros_like(q_level[0])
+        pos_prefix = torch.zeros_like(pos_level[0])
+        neg_prefix = torch.zeros_like(neg_level[0])
+        for l in range(num_levels):
+            level_idx = start_level + l
+            q_prefix = q_prefix + q_level[level_idx]
+            pos_prefix = pos_prefix + pos_level[level_idx]
+            neg_prefix = neg_prefix + neg_level[level_idx]
+
+            q_n = F.normalize(q_prefix, dim=-1)
+            pos_n = F.normalize(pos_prefix, dim=-1)
+            neg_n = F.normalize(neg_prefix, dim=-1)
+
+            L_ret_l = self.contra_loss.forward_explicit_neg(q_n, pos_n, neg_n)
+            L_ret_per_level.append(omega_l[l] * L_ret_l)
+
+        L_ret = torch.stack(L_ret_per_level).sum()
+        return L_ret, L_ret_per_level
+
     def compute_single_batch(self, batch: Tuple, logit_scale: Optional[float] = None) -> Dict:
         """Compute loss and metrics for a single batch.
-        
+
         Args:
             batch: Input batch containing query, pool, instructions, and IDs
             logit_scale: Optional scaling factor for logits
-            
+
         Returns:
             Dictionary containing loss values and metrics
         """
-        # Unpack batch data
-        query, pool, instruct, h_qid = batch
+        # Unpack batch data. The retrieval-aware feasibility study (Components
+        # 2-6, extensions/retrieval_aware_id_refinement/) adds a 5th element,
+        # `hard_neg_pool`, via HardNegativeAugmentedDataset + its custom collate
+        # function. Every other training config in this repo still yields the
+        # original 4-tuple; nothing below this unpack differs for that case
+        # (Component 2's "existing losses stay byte-for-byte unchanged"
+        # requirement).
+        hard_neg_pool = None
+        if len(batch) == 5:
+            query, pool, instruct, h_qid, hard_neg_pool = batch
+        else:
+            query, pool, instruct, h_qid = batch
         gpu_id = utils.get_rank()
 
         # Prepare masks and embeddings
@@ -357,10 +864,61 @@ class RQ(nn.Module):
         p_did_list = [hash(p_emb[i]) for i in range(len(p_emb))]
         all_id_list = qid_list + p_did_list
 
-        # Perform residual quantization
-        quant, Is, rq_loss = self.residual_rq(encode_feature.unsqueeze(0), rand_quantize_dropout_fixed_seed=2023)
-        quant = quant.squeeze(0)
-        Is = Is.squeeze(0)
+        # Perform residual quantization.
+        # Component 3: when the retrieval-aware study is enabled, use the manual
+        # per-level breakdown loop (needed to isolate L_bal^(l) for Component 6's
+        # gradient projection, and level_quantized for Component 5's prefix-depth
+        # L_ret) INSTEAD OF self.residual_rq(...)'s fused-loss call -- never both,
+        # to avoid double-applying the EMA codebook update for the same step. The
+        # two paths are numerically equivalent for quant/Is (see
+        # extensions/retrieval_aware_id_refinement/test_quantize_with_breakdown_equivalence.py);
+        # this branch changes nothing about this method's behavior when
+        # retrieval_aware_enabled is False (the default for every config outside
+        # this study).
+        level_quantized = None
+        commit_losses = None
+        diversity_losses = None
+        if self.retrieval_aware_enabled:
+            quant, Is, commit_losses, diversity_losses, level_quantized = self._quantize_with_breakdown(
+                encode_feature.unsqueeze(0)
+            )
+            quant = quant.squeeze(0)
+            Is = Is.squeeze(0)
+            level_quantized = [lv.squeeze(0) for lv in level_quantized]
+            # Component 4 [Fable fix]: L_RQ in the retrieval-aware path is PURE
+            # commitment loss (the codebook-diversity term is handled entirely
+            # separately, as L_bal, via Component 6's gradient projection -- it
+            # must NOT also be fused into L_RQ here, or it would be counted twice:
+            # once (correctly, layer-wise) via L_bal, and once (incorrectly,
+            # un-layer-wise) if it leaked back into L_RQ through rq_loss.mean()).
+            rq_loss = torch.stack(commit_losses)
+        elif self.balance_split_enabled:
+            # Direction-aware balance regularization (RQ2 modality-split study).
+            # Reuse the already-computed per-sample modality masks (all_img_mask/
+            # all_txt_mask) -- no new plumbing. rq_loss is recomposed as
+            # commitment + modality-weighted diversity, which equals the fused
+            # path exactly when lambda_img == lambda_txt (equivalence test). This
+            # assumes commitment_weight == 1.0 (the library default for this
+            # project's VectorQuantize construction, documented in the existing
+            # equivalence test), so no per-term scaling is applied.
+            quant, Is, commit_losses, weighted_div_losses = self._quantize_with_breakdown_modality_split(
+                encode_feature.unsqueeze(0), all_img_mask, all_txt_mask
+            )
+            quant = quant.squeeze(0)
+            Is = Is.squeeze(0)
+            rq_loss = torch.stack(commit_losses) + torch.stack(weighted_div_losses)
+        else:
+            # freeze_codebook is an orthogonal knob to retrieval_aware_enabled
+            # (used by the continued-training-no-new-losses control cell to
+            # test the EMA-churn hypothesis in isolation from the retrieval-aware
+            # losses) -- ResidualVQ.forward accepts it directly, so it must be
+            # threaded through here too, not just inside _quantize_with_breakdown.
+            quant, Is, rq_loss = self.residual_rq(
+                encode_feature.unsqueeze(0), rand_quantize_dropout_fixed_seed=2023,
+                freeze_codebook=self.freeze_codebook,
+            )
+            quant = quant.squeeze(0)
+            Is = Is.squeeze(0)
 
         quant = F.normalize(quant)
         q_decode, p_decode = quant[:bs], quant[bs:]
@@ -406,12 +964,39 @@ class RQ(nn.Module):
             
         loss = cl_loss + rq_loss + mse_loss
 
+        # ============================================================
+        # Retrieval-aware extras (Components 4-5). L_bal is computed here
+        # per-level but is deliberately NOT added into `loss` above -- per the
+        # mentor's point 6/7 and Component 6, it is applied to the encoder via
+        # gradient-conflict projection in engine.py's
+        # train_one_epoch_retrieval_aware, not through this method's ordinary
+        # backward path. L_ret, by contrast, IS added into `loss` (mentor's
+        # formula: L = L_RQ + beta*L_ret + sum_l lambda_l*L_bal^(l) -- L_ret
+        # shares the normal backward with L_RQ; only the L_bal term is
+        # projected).
+        # ============================================================
+        L_ret = None
+        L_ret_per_level = None
+        L_bal_per_level = None
+        lambda_l = None
+        if self.retrieval_aware_enabled and hard_neg_pool is not None:
+            lambda_l = self.balance_budget * F.softmax(self.balance_level_logits, dim=0)  # [num_semantic_levels]
+            diversity_losses_semantic = diversity_losses[1:] if self.modality_index else diversity_losses
+            L_bal_per_level = [
+                lambda_l[l] * diversity_losses_semantic[l] for l in range(self.num_semantic_levels)
+            ]
+
+            L_ret, L_ret_per_level = self._compute_retrieval_aware_L_ret(
+                level_quantized, bs, hard_neg_pool, gpu_id
+            )
+            loss = loss + self.retrieval_aware_beta * L_ret
+
         self.collision_update(Is, all_id_list)
 
         if self.iter % 200 == 0:
             print('Query ID: ' + str(self.transform_row(Is[0])))
             print('Doc ID: ' + str(self.transform_row(Is[bs])))
-        
+
         self.iter += 1
 
         # Prepare outputs
@@ -428,7 +1013,18 @@ class RQ(nn.Module):
             'accuracy': accuracy,
             'accuracy_org': accuracy_org
         }
-        
+
+        if self.retrieval_aware_enabled:
+            outputs.update({
+                'L_ret': L_ret if L_ret is not None else torch.zeros((), device=device),
+                'L_ret_per_level': L_ret_per_level,
+                'L_bal_per_level': L_bal_per_level,
+                'lambda_l': lambda_l,
+                'commit_losses': commit_losses,
+                'diversity_losses': diversity_losses,
+                'level_quantized': level_quantized,
+            })
+
         return outputs
 
     def encode_mbeir_batch(self, batch: Dict, code_output: bool = False, 
@@ -468,15 +1064,18 @@ class RQ(nn.Module):
             output = self.inference(img_emb, txt_emb, img_mask, txt_mask)['quant']
         return output, id_list
 
-    def encode_extracted_batch(self, batch: Tuple, code_output: bool = False, 
-                             encode_output: bool = False) -> Tuple:
+    def encode_extracted_batch(self, batch: Tuple, code_output: bool = False,
+                             encode_output: bool = False, recon_output: bool = False) -> Tuple:
         """Encode a batch of extracted features.
-        
+
         Args:
             batch: Input batch containing pool and IDs
             code_output: Whether to return code output
-            encode_output: Whether to return encoded output
-            
+            encode_output: Whether to return encoded (rerank) output
+            recon_output: Whether to return the decoded/reconstructed ('quant')
+                embedding alongside the code, for reconstruction-quality
+                diagnostics (MSE / cosine similarity vs. the original embedding)
+
         Returns:
             Tuple containing outputs and IDs
         """
@@ -490,9 +1089,12 @@ class RQ(nn.Module):
         txt_emb = pool['txt_emb'].view(-1, pool['txt_emb'].size(-1)).to(gpu_id, non_blocking=True)
 
         assert img_emb.size(0) == len(id_list), "embeddings and id_batched must have the same batch size."
-        
+
         # Get outputs based on requested types
-        if code_output and encode_output:
+        if code_output and recon_output:
+            output = self.inference(img_emb, txt_emb, img_mask, txt_mask)
+            return output['code'], output['quant'], id_list
+        elif code_output and encode_output:
             output = self.inference(img_emb, txt_emb, img_mask, txt_mask)
             return output['code'], output['rerank'], id_list
         elif code_output:
@@ -556,23 +1158,26 @@ class RQ(nn.Module):
         }
         return outputs
     
-    def forward(self, 
-                input: Optional[Tuple] = None, 
+    def forward(self,
+                input: Optional[Tuple] = None,
                 evaluation: bool = False,
                 encode_mbeir_batch: bool = True,
-                code_output: bool = False, 
-                encode_output: bool = False, 
+                code_output: bool = False,
+                encode_output: bool = False,
+                recon_output: bool = False,
                 logit_scale: Optional[float] = None) -> Union[Dict, Tuple]:
         """Forward pass of the model.
-        
+
         Args:
             input: Input batch
             evaluation: Whether in evaluation mode
             encode_mbeir_batch: Whether to encode MBEIR batch
             code_output: Whether to return code output
             encode_output: Whether to return encoded output
+            recon_output: Whether to return the decoded/reconstructed ('quant')
+                embedding instead of the raw ('rerank') one (extracted-batch path only)
             logit_scale: Optional scaling factor for logits
-            
+
         Returns:
             Model outputs
         """
@@ -580,5 +1185,6 @@ class RQ(nn.Module):
             if encode_mbeir_batch:
                 return self.encode_mbeir_batch(input, code_output=code_output, encode_output=encode_output)
             else:
-                return self.encode_extracted_batch(input, code_output=code_output, encode_output=encode_output)
+                return self.encode_extracted_batch(input, code_output=code_output, encode_output=encode_output,
+                                                    recon_output=recon_output)
         return self.compute_single_batch(input, logit_scale=logit_scale)

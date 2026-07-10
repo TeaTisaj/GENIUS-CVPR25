@@ -9,7 +9,7 @@ data_config:
   returns: null
   shuffle_cand: false
 dataloader_config:
-  num_workers: 16
+  num_workers: 4
   train_batch_size: 2
   valid_batch_size: 2048
 dist_config:

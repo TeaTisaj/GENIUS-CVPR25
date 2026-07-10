@@ -1,0 +1,48 @@
+# Extracts instructed CLIP-SF query embeddings for VisualNews's held-out test
+# split (task0 T->I + task3 I->T, merged, 39,996 queries -- see the paper's
+# disclosed note that this is the union pool's val split, not an official
+# M-BEIR test partition). Mirrors config_test_coco_queries.yaml exactly.
+# cand_pool_path points at the full local task0 pool only as an unused
+# placeholder (the extraction script always builds a candidate loader even in
+# --query_only mode; it is never iterated).
+#
+# CRITICAL: emb_save_path MUST be a directory distinct from
+# extracted_embed/CLIP_SF/test/ (COCO's) -- the output filename
+# (query_SFpretrained_instruction_IT_dict.pt) is hard-coded by
+# clip_feature_extration_train.py regardless of dataset, so reusing that
+# directory would silently overwrite COCO's existing, already-relied-upon
+# test query embeddings. Caught before ever submitting this job.
+data_config:
+  cand_pool_path: cand_pool/local/mbeir_visualnews_task0_cand_pool.jsonl
+  enable_query_instruct: true
+  hard_neg_num: 0
+  image_size: 224, 224
+  in_batch_neg_num: 0
+  query_data_path: query/test/mbeir_visualnews_task0_task3_test_merged.jsonl
+  query_instruct_path: instructions/query_instructions.tsv
+  returns: null
+  shuffle_cand: false
+dataloader_config:
+  num_workers: 8
+  train_batch_size: 2
+  valid_batch_size: 2048
+dist_config:
+  dist_url: env://
+experiment:
+  description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
+  exp_name: TestQueryExtractionVisualNews
+  instruct_status: Instruct
+  path_suffix: CLIP
+model:
+  ckpt_config:
+    ckpt_dir: checkpoint/CLIP_SF
+    ckpt_name: clip_sf_large.pth
+    using_pretrained: true
+  clip_vision_model_name: ViT-L/14
+  emb_save_path: extracted_embed/CLIP_SF/test_visualnews
+  gather_embeddings: true
+  name: CLIPScoreFusion
+  pretrained_clip_model_dir: checkpoint/CLIP/
+  short_name: CLIP_SF
+  size: Large
+seed: 2023

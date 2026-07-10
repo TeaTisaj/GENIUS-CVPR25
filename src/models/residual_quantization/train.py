@@ -44,7 +44,7 @@ from data.mbeir_dataset import MBEIRDictInstructioneDataset
 from models.uniir_clip import utils
 from models.uniir_clip.clip_nofusion.clip_nf import CLIPNoFusion
 from models.residual_quantization.residual_quantization import RQ
-from models.residual_quantization.engine import train_one_epoch, eval_engine
+from models.residual_quantization.engine import train_one_epoch, eval_engine, train_one_epoch_retrieval_aware
 from models.utils import cosine_warmup_scheduler
 
 # Set up logger
@@ -192,48 +192,82 @@ def train(
     scaler: GradScaler,
     config: Any,
     epoch: int,
+    val_loader_retrieval_aware: Optional[DataLoader] = None,
 ) -> None:
     """
     Main training loop.
-    
+
     Args:
         train_loader: Training data loader
-        val_loader: Validation data loader
+        val_loader: Validation data loader (existing in-batch-CLIP-encoded
+            eval_engine format; untouched by the retrieval-aware study)
         model: Model to train
         model_without_ddp: Model without distributed data parallel wrapper
         clip_model: CLIP model for feature extraction
         optimizer: Optimizer
         scheduler: Learning rate scheduler
-        scaler: Gradient scaler for mixed precision training
+        scaler: Gradient scaler for mixed precision training (unused by the
+            retrieval-aware path -- see engine.py's
+            train_one_epoch_retrieval_aware docstring for why AMP is disabled
+            for that study)
         config: Configuration object
         epoch: Starting epoch number
+        val_loader_retrieval_aware: held-out validation split in the
+            HardNegativeAugmentedDataset 5-tuple format, used only by
+            Component 4's validation-guided balance_level_logits perturbation
+            when config.retrieval_aware_config.enabled is True.
     """
     gpu_id = config.dist_config.gpu_id
     is_distributed_mode = config.dist_config.distributed_mode
     global_step = 0
     model.zero_grad()
 
+    retrieval_aware_enabled = config.get("retrieval_aware_config", {}).get("enabled", False)
+    # Persisted across epochs (not recreated every epoch) so Component 4's
+    # perturb-and-keep rule sees a continuous window-over-window comparison,
+    # not one that resets to "no prior measurement" at every epoch boundary.
+    perturbation_state = {'last_val_L_ret': None, 'last_perturbation': None}
+
     if epoch != 0:
         print(f"Resuming training from epoch {epoch}")
-        
+
     for epoch in range(epoch, config.trainer_config.num_train_epochs):
         # Set different seed for different epoch
         if is_distributed_mode:
             train_loader.sampler.set_epoch(epoch)
 
-        # Training phase
-        train_stats = train_one_epoch(
-            model,
-            clip_model,
-            train_loader,
-            optimizer,
-            epoch,
-            gpu_id,
-            scheduler,
-            global_step,
-            scaler,
-            config,
-        )
+        # Training phase.
+        # [Component 6] Use the gradient-conflict-projection training step,
+        # fp32/no-AMP, ONLY when this study's retrieval_aware_config.enabled is
+        # set -- train_one_epoch (AMP, unmodified) remains the training loop
+        # for every other experiment in this repo.
+        if retrieval_aware_enabled:
+            train_stats = train_one_epoch_retrieval_aware(
+                model,
+                train_loader,
+                optimizer,
+                epoch,
+                gpu_id,
+                scheduler,
+                global_step,
+                config,
+                val_loader=val_loader_retrieval_aware,
+                perturbation_state=perturbation_state,
+            )
+        else:
+            train_stats = train_one_epoch(
+                model,
+                clip_model,
+                train_loader,
+                optimizer,
+                epoch,
+                gpu_id,
+                scheduler,
+                global_step,
+                scaler,
+                config,
+                use_amp=config.trainer_config.get("use_amp", True),
+            )
         gc.collect()
 
         # Evaluation and checkpointing
@@ -289,6 +323,41 @@ def main(config: Any) -> None:
     # Initialize RQ model
     model = RQ(config=config)
 
+    # [Fable fix, Component 7] RQ-checkpoint warm-start loader. Before this,
+    # train.py had NO code path that loaded RQ model weights themselves -- only
+    # `clip_model`'s CLIP-SF weights (the `pretrained_config` block below).
+    # Required by the mentor's point 2 ("start from a working... checkpoint")
+    # for the retrieval-aware refinement feasibility study. Deliberately
+    # independent of `resume_training` (which additionally restores
+    # optimizer/scheduler/scaler state from a checkpoint dict bound elsewhere in
+    # this function) -- warm-starting loads ONLY the model weights and starts
+    # the optimizer/scheduler/EMA-cluster-size bookkeeping completely fresh.
+    warm_start_rq_ckpt = model_config.get("warm_start_rq_ckpt", None)
+    if warm_start_rq_ckpt:
+        assert not model_config.ckpt_config.resume_training, (
+            "model.warm_start_rq_ckpt and model.ckpt_config.resume_training=true are "
+            "mutually exclusive: warm-start loads ONLY the model weights and starts "
+            "the optimizer/scheduler/EMA bookkeeping fresh, while resume_training "
+            "additionally restores optimizer/scheduler/scaler state -- from the wrong "
+            "source here, since it reads off the (separate) CLIP-SF pretrained-weights "
+            "checkpoint variable below, not this RQ checkpoint."
+        )
+        warm_start_path = (
+            warm_start_rq_ckpt if os.path.isabs(warm_start_rq_ckpt)
+            else os.path.join(config.genir_dir, warm_start_rq_ckpt)
+        )
+        assert os.path.exists(warm_start_path), f"warm_start_rq_ckpt not found: {warm_start_path}"
+        logger.info(f"Warm-starting RQ model weights from {warm_start_path}")
+        warm_start_ckpt = torch.load(warm_start_path, map_location=torch.device('cpu'), weights_only=False)
+        model.load_state_dict(warm_start_ckpt["model"], strict=True)
+        # Verification note (per the plan's Component 7): compare
+        # model.residual_rq.layers[l]._codebook.embed to warm_start_ckpt's tensor
+        # immediately after this load, before the first training step, to confirm
+        # the load actually took effect -- see
+        # extensions/retrieval_aware_id_refinement/check_feasibility_criteria.py
+        # and this repo's task report for how this was verified without a real
+        # checkpoint (constructed a small synthetic RQ + state_dict round-trip).
+
     # Set up optimizer
     tok_embeddings = lambda n, p: '_codebook' in n or 'tok_embeddings' in n
     exclude_condition = lambda n, p: (p.ndim < 2 or any(sub in n for sub in ["bn", "ln", "bias", "logit_scale"])) and not tok_embeddings(n, p)
@@ -312,7 +381,7 @@ def main(config: Any) -> None:
         )
         assert os.path.exists(pretrained_path), f"Checkpoint file {pretrained_path} does not exist."
         logger.info(f"Loading CLIPScoreFusion checkpoint from {pretrained_path}")
-        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(pretrained_path, map_location=torch.device('cpu'), weights_only=False)
         clip_model.load_state_dict(checkpoint["model"])
 
     # Move model to GPU and wrap with DDP if needed
@@ -348,7 +417,73 @@ def main(config: Any) -> None:
         clip_tokenizer=clip_tokenizer,
         return_instruct=True
     )
-    
+
+    # ============================================================
+    # Retrieval-aware RQ refinement feasibility study (Components 2, 4, 7):
+    # wrap train_dataset with HardNegativeAugmentedDataset and build a SEPARATE
+    # held-out validation split, only when config.retrieval_aware_config.enabled.
+    # Lazy sys.path insertion + import (not a top-level import) so this optional
+    # extension code can never affect any of the many OTHER training configs
+    # that don't set retrieval_aware_config.enabled.
+    # ============================================================
+    retrieval_aware_enabled = config.get("retrieval_aware_config", {}).get("enabled", False)
+    train_collate_fn = None
+    val_loader_retrieval_aware = None
+    if retrieval_aware_enabled:
+        import sys
+        extensions_dir = os.path.join(config.genir_dir, "extensions", "retrieval_aware_id_refinement")
+        if extensions_dir not in sys.path:
+            sys.path.insert(0, extensions_dir)
+        from hard_negative_dataset import HardNegativeAugmentedDataset, hard_negative_collate_fn
+
+        ra_config = config.retrieval_aware_config
+        hard_neg_num = ra_config.hard_neg_num
+
+        train_hard_neg_dict = torch.load(
+            os.path.join(config.genir_dir, ra_config.hard_neg_path), map_location="cpu", weights_only=False
+        )
+        train_dataset = HardNegativeAugmentedDataset(train_dataset, train_hard_neg_dict, hard_neg_num)
+        train_collate_fn = hard_negative_collate_fn
+
+        # Held-out validation split for Component 4's validation-guided
+        # balance_level_logits perturbation. Deliberately NOT the existing
+        # config.evaluator.enable_eval / IN_BATCH_VAL machinery below: that
+        # pipeline yields (q_emb, p_emb) pairs from raw CLIP-encoded
+        # images/text (see eval_engine in engine.py), a format incompatible
+        # with compute_single_batch's (query, pool, instruct, h_qid[,
+        # hard_neg_pool]) dict-batch convention that L_ret depends on.
+        # Instead this builds a second MBEIRDictInstructioneDataset over
+        # ra_config.val_query_data_path -- a disjoint slice of the same 20K
+        # feasibility subsample (produced by subsample_coco_train_queries.py),
+        # deliberately chosen because both slices are covered by the SAME
+        # train-split Stage-0 CLIP-SF embedding dicts already loaded above;
+        # the real, separate COCO val query split has no CLIP-SF embedding
+        # dict extracted for it, so it cannot be used here without a new
+        # Stage-0 extraction run.
+        val_dataset_ra = MBEIRDictInstructioneDataset(
+            mbeir_data_dir=config.mbeir_data_dir,
+            query_data_path=ra_config.val_query_data_path,
+            cand_pool_path=config.data_config.train_cand_pool_path,
+            query_instruct_path=config.data_config.query_instruct_path,
+            query_dict_dir=query_dir,
+            pool_dict_dir=pool_dir,
+            clip_tokenizer=clip_tokenizer,
+            return_instruct=True,
+            print_config=False,
+        )
+        val_hard_neg_dict = torch.load(
+            os.path.join(config.genir_dir, ra_config.val_hard_neg_path), map_location="cpu", weights_only=False
+        )
+        val_dataset_ra = HardNegativeAugmentedDataset(val_dataset_ra, val_hard_neg_dict, hard_neg_num)
+        val_loader_retrieval_aware = DataLoader(
+            dataset=val_dataset_ra,
+            batch_size=config.dataloader_config.valid_batch_size,
+            num_workers=0,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=hard_negative_collate_fn,
+        )
+
     # Set up distributed sampler for training
     train_sampler = DistributedSampler(
         dataset=train_dataset,
@@ -356,7 +491,7 @@ def main(config: Any) -> None:
         rank=global_rank,
         shuffle=True,
     )
-    
+
     # Create training dataloader
     train_loader = DataLoader(
         dataset=train_dataset,
@@ -366,6 +501,7 @@ def main(config: Any) -> None:
         sampler=train_sampler,
         shuffle=False,
         drop_last=True,
+        collate_fn=train_collate_fn,
     )
 
     # Create validation dataset and dataloader if enabled
@@ -427,6 +563,7 @@ def main(config: Any) -> None:
         scaler=scaler,
         config=config,
         epoch=epoch,
+        val_loader_retrieval_aware=val_loader_retrieval_aware,
     )
 
 # ================ Script Entry Point ================

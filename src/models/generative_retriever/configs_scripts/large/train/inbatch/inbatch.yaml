@@ -23,7 +23,7 @@ dataloader_config:
 dist_config:
   dist_url: env://
 evaluator:
-  enable_eval: true
+  enable_eval: false
   eval_freq: 5
   eval_start: 40
   print_freq: 10
@@ -57,11 +57,11 @@ trainer_config:
   eval_steps: 500
   gradient_accumulation_steps: 1
   learning_rate: 1e-4
-  num_train_epochs: 31
+  num_train_epochs: 100
   print_freq: 51
   warmup_steps: 0
 wandb_config:
-  enabled: true
+  enabled: false
   experiment_name: ${experiment.description}
   wandb_key: wandb_key
   wandb_project: GENIR

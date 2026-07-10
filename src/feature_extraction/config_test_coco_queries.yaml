@@ -1,0 +1,43 @@
+# Component 9, Step 2: extract instructed CLIP-SF query embeddings for the
+# official, held-out MSCOCO test split (task0 T->I + task3 I->T queries,
+# merged) -- these embeddings do not exist anywhere on disk yet (verified,
+# see ~/.claude/plans/so-this-is-the-swirling-quiche.md, Component 9).
+# Cloned from config_train_coco_fashioniq.yaml. cand_pool_path points at the
+# full local pool only because the extraction script always constructs a
+# candidate dataset/loader even in --query_only mode (it's just never
+# iterated) -- every official test did is present in this pool (verified in
+# Step 1), so this is a safe, do-nothing placeholder for that unused path.
+data_config:
+  cand_pool_path: cand_pool/local/mbeir_mscoco_task0_cand_pool.jsonl
+  enable_query_instruct: true
+  hard_neg_num: 0
+  image_size: 224, 224
+  in_batch_neg_num: 0
+  query_data_path: query/test/mbeir_mscoco_task0_task3_test_merged.jsonl
+  query_instruct_path: instructions/query_instructions.tsv
+  returns: null
+  shuffle_cand: false
+dataloader_config:
+  num_workers: 8
+  train_batch_size: 2
+  valid_batch_size: 2048
+dist_config:
+  dist_url: env://
+experiment:
+  description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
+  exp_name: TestQueryExtraction
+  instruct_status: Instruct
+  path_suffix: CLIP
+model:
+  ckpt_config:
+    ckpt_dir: checkpoint/CLIP_SF
+    ckpt_name: clip_sf_large.pth
+    using_pretrained: true
+  clip_vision_model_name: ViT-L/14
+  emb_save_path: extracted_embed/CLIP_SF/test
+  gather_embeddings: true
+  name: CLIPScoreFusion
+  pretrained_clip_model_dir: checkpoint/CLIP/
+  short_name: CLIP_SF
+  size: Large
+seed: 2023

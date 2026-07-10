@@ -54,7 +54,8 @@ def generate_codes_for_dataset(
     cand_codes=None,
     is_extracted=False,
     use_embedding=True,
-    trie_save_path=None
+    trie_save_path=None,
+    recon_output=False,
 ):
     codes_tensor = []
     id_list = []
@@ -87,7 +88,8 @@ def generate_codes_for_dataset(
                     evaluation=True,
                     encode_mbeir_batch=(not is_extracted),
                     code_output=True,
-                    encode_output=True
+                    encode_output=not recon_output,
+                    recon_output=recon_output,
                 )
             else:
                 codes_batched, encode_batched, ids_list_batched = model(
@@ -378,6 +380,13 @@ def generate_codes_for_config(model, img_preprocess_fn, clip_tokenizer, seq2seq_
                     print(f"Log: Generating codes for {query_data_path} ...")
                 print(f"Inference with half precision: {config.retrieval_config.use_fp16}")
 
+            # Diagnostic-only flag (orthogonal to retrieval_config.rerank, which
+            # is for the live GENIUS-R reranking pipeline): when set, the
+            # cand_pool branches below save the RQ decoder's reconstructed
+            # ('quant') embedding instead of the raw one, for reconstruction
+            # MSE / cosine-similarity analysis of a trained tokenizer.
+            recon_output = config.retrieval_config.get("recon", False)
+
             if split_name == "cand_pool" and is_extracted:
                 codes, embeddings, id_list = generate_codes_for_dataset(
                     model=model,
@@ -385,6 +394,7 @@ def generate_codes_for_config(model, img_preprocess_fn, clip_tokenizer, seq2seq_
                     device=config.dist_config.gpu_id,
                     use_fp16=config.retrieval_config.use_fp16,
                     is_extracted=True,
+                    recon_output=recon_output,
                 )
             elif split_name == "cand_pool" and not is_extracted:
                 codes, embeddings, id_list = generate_codes_for_dataset(
@@ -392,6 +402,7 @@ def generate_codes_for_config(model, img_preprocess_fn, clip_tokenizer, seq2seq_
                     data_loader=data_loader,
                     device=config.dist_config.gpu_id,
                     use_fp16=config.retrieval_config.use_fp16,
+                    recon_output=recon_output,
                 )
             else:
                 # load cand_codes per each dataset
@@ -448,6 +459,13 @@ def generate_codes_for_config(model, img_preprocess_fn, clip_tokenizer, seq2seq_
                     os.makedirs(os.path.dirname(embeddings_path), exist_ok=True)
                     np.save(embeddings_path, embeddings)
                     print(f"Log: Saved Embeddings to {embeddings_path}.")
+
+                if split_name == "cand_pool" and recon_output:
+                    recon_data_name = f"mbeir_{mid_name}_{split_name}_recon.npy"
+                    recon_path = os.path.join(save_path, recon_data_name)
+                    os.makedirs(os.path.dirname(recon_path), exist_ok=True)
+                    np.save(recon_path, embeddings)
+                    print(f"Log: Saved reconstructed embeddings to {recon_path}.")
 
                 id_data_name = f"mbeir_{mid_name}_{split_name}_ids.npy"
                 id_path = os.path.join(save_path, id_data_name)

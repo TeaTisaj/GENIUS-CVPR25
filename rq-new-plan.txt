@@ -1,0 +1,528 @@
+
+1. Motivation 
+
+Observations from the released GENIUS quantizer 
+
+Using the released rq_clip_large.pth, we observe: 
+
+uneven codebook utilization, especially at early RQ levels; 
+
+rapid separation of cross-dataset candidates but persistent within-dataset collisions; 
+
+strong dataset/domain information in semantic codes; 
+
+quantized IDs largely inherit the geometry and ambiguity of the upstream embedding space. 
+
+Broader motivation 
+
+RQ-based semantic IDs are widely used in generative retrieval, but the relationship between ID structure and downstream retrieval effectiveness remains insufficiently understood. 
+
+Open questions: 
+
+Which structural properties of RQ IDs are most relevant to retrieval performance? 
+
+Does more balanced code usage improve retrieval, or can excessive balancing harm semantic fidelity? 
+
+Do broad-domain and fine-grained retrieval tasks require different RQ-ID structures and optimization strategies? 
+
+Overall goal 
+
+Move beyond GENIUS and conduct a controlled study of RQ-based semantic IDs: 
+
+characterize the ID structures learned on different retrieval tasks; 
+
+connect ID-level properties with downstream retrieval performance; 
+
+investigate whether code-usage regularization improves retrieval; 
+
+optionally develop an adaptive capacity-allocation strategy based on the findings. 
+
+ 
+
+2. Experimental Setting 
+
+Datasets 
+
+Train and evaluate each dataset independently. Do not merge the datasets. 
+
+The two datasets serve as contrasting settings: 
+
+Aspect 
+
+MSCOCO 
+
+FashionIQ 
+
+Domain 
+
+Broad and open-domain 
+
+Narrow fashion domain 
+
+Query 
+
+Text caption 
+
+Image + modification text 
+
+Candidate distribution 
+
+Diverse 
+
+Dense and fine-grained 
+
+Main challenge 
+
+Broad semantic organization 
+
+Fine-grained discrimination 
+
+MSCOCO provides natural-image caption data, while FashionIQ is designed for composed retrieval in the fashion domain, where target images are retrieved using a reference image and modification text.  
+
+ 
+
+Independent pipeline for each dataset 
+
+For both MSCOCO and FashionIQ: 
+
+Fix the pretrained multimodal encoder. 
+
+Extract candidate image embeddings. 
+
+Train a vanilla RQ tokenizer. 
+
+Generate semantic IDs for all candidates. 
+
+Train a generative retriever to generate target IDs. 
+
+Train alternative RQ tokenizers under different regularization settings. 
+
+Regenerate IDs and retrain the same retriever. 
+
+Compare ID properties and retrieval performance. 
+
+Controlled variables 
+
+Keep the following identical within each dataset: 
+
+candidate embeddings; 
+
+RQ architecture; 
+
+number of RQ levels; 
+
+codebook size; 
+
+retriever architecture; 
+
+training and evaluation splits; 
+
+decoding and evaluation settings. 
+
+Basic methods 
+
+Vanilla RQ 
+
+RQ with weak balance regularization 
+
+RQ with medium balance regularization 
+
+RQ with strong balance regularization 
+
+The goal is not to assume that uniform code usage is optimal, but to study the effect of gradually changing the balance of code assignments. 
+
+ 
+
+3. Research Questions 
+
+RQ1. How are RQ-ID structural properties related to retrieval performance? 
+
+Research question 
+
+Which properties of semantic IDs are most strongly associated with downstream retrieval effectiveness? 
+
+Candidate properties: 
+
+codebook utilization; 
+
+assignment entropy; 
+
+unused-code ratio; 
+
+prefix collision rate; 
+
+prefix-bucket size; 
+
+reconstruction error; 
+
+embedding reconstruction similarity. 
+
+Experiments 
+
+For every trained tokenizer: 
+
+Generate IDs for all candidates. 
+
+Measure ID-level properties. 
+
+Train the same generative retriever using these IDs. 
+
+Evaluate Recall@1, Recall@5, and Recall@10. 
+
+Compare ID metrics with retrieval performance across all tokenizer settings. 
+
+ID-level measurements 
+
+used-code percentage at each RQ level; 
+
+entropy of code assignments; 
+
+unused-code percentage; 
+
+mean, median, and maximum prefix-bucket size; 
+
+collision rate at different prefix depths; 
+
+full-ID collision rate; 
+
+reconstruction MSE; 
+
+cosine similarity between original and reconstructed embeddings. 
+
+Analysis 
+
+correlation between utilization and Recall; 
+
+correlation between collision rate and Recall; 
+
+correlation between reconstruction quality and Recall; 
+
+comparison of successful and unsuccessful tokenizer settings. 
+
+Outputs 
+
+summary table of ID metrics and retrieval results; 
+
+utilization-versus-Recall scatter plot; 
+
+collision-versus-Recall scatter plot; 
+
+reconstruction-error-versus-Recall scatter plot; 
+
+correlation table for each dataset. 
+
+Main objective 
+
+Identify which ID properties are useful indicators of retrieval quality, rather than assuming that any single property is always beneficial. 
+
+ 
+
+ 
+
+RQ2. Does more balanced code usage improve retrieval? 
+
+Research question 
+
+Does increasing codebook balance improve index discriminability and retrieval performance, or can excessive balancing damage semantic fidelity? 
+
+Experiments 
+
+Train RQ tokenizers with different balance strengths: 
+
+no balancing; 
+
+weak balancing; + use entroy to control the strength 
+
+medium balancing; 
+
+strong balancing. 
+
+Use a soft regularization term that encourages broader code usage without enforcing perfectly uniform assignments. 
+
+Compare three dimensions 
+
+Code-space quality 
+
+utilization; 
+
+entropy; 
+
+unused-code ratio; 
+
+prefix-bucket distribution; 
+
+collision rate. 
+
+Semantic fidelity 
+
+reconstruction error; 
+
+original-reconstructed cosine similarity; 
+
+preservation of local embedding neighbours. 
+
+Retrieval effectiveness 
+
+Recall@1; 
+
+Recall@5; 
+
+Recall@10. 
+
+Outputs 
+
+balance strength versus utilization curve; 
+
+balance strength versus collision-rate curve; 
+
+balance strength versus reconstruction-error curve; 
+
+balance strength versus Recall curve; 
+
+trade-off table covering balance, fidelity, and retrieval. 
+
+Possible outcomes 
+
+Moderate balancing is beneficial 
+
+better capacity usage; 
+
+fewer crowded prefixes; 
+
+preserved reconstruction quality; 
+
+improved Recall. 
+
+Strong balancing is harmful 
+
+higher utilization; 
+
+poorer semantic reconstruction; 
+
+lower retrieval performance. 
+
+Balance has little retrieval effect 
+
+code utilization alone may not determine retrieval quality; 
+
+other structural properties may be more important. 
+
+Main objective 
+
+Determine whether there is an optimal degree of code balance, rather than treating uniform usage as an unconditional goal. 
+
+ 
+
+ 
+
+RQ3. How do effective RQ-ID properties differ across data distributions? 
+
+Research question 
+
+Do broad-domain and fine-grained retrieval tasks require different semantic ID structures and balance levels? 
+
+Experiments 
+
+Repeat the complete vanilla and balanced-RQ study independently on: 
+
+MSCOCO; 
+
+FashionIQ. 
+
+Do not directly compare their absolute Recall values because their retrieval tasks differ. Compare instead: 
+
+relative improvement over vanilla RQ; 
+
+ID-level structural differences; 
+
+optimal balance strength; 
+
+relationships between ID metrics and retrieval performance. 
+
+Compare across datasets 
+
+utilization at each RQ level; 
+
+entropy; 
+
+prefix-bucket size; 
+
+collision rate; 
+
+reconstruction quality; 
+
+optimal balance strength; 
+
+relative Recall improvement. 
+
+Expected analysis 
+
+MSCOCO 
+
+whether broad semantic diversity naturally produces broader code usage; 
+
+whether reconstruction fidelity is more important than strict balance. 
+
+FashionIQ 
+
+whether dense fine-grained candidates produce more crowded prefixes; 
+
+whether moderate balancing is more useful in a locally dense candidate space; 
+
+whether lower collision corresponds more strongly to retrieval gains. 
+
+Outputs 
+
+COCO versus FashionIQ ID-property table; 
+
+per-level utilization comparison; 
+
+prefix-bucket distribution comparison; 
+
+optimal balance-strength comparison; 
+
+relative retrieval-improvement table; 
+
+dataset-specific correlation plots. 
+
+Main objective 
+
+Understand whether a single RQ-ID optimization strategy works across different data distributions, or whether ID construction should be adapted to the retrieval setting. 
+
+ 
+
+ 
+
+4. Optional RQ4. Can code capacity be allocated adaptively? 
+
+This question should only be explored after RQ1–RQ3 reveal clear patterns. 
+
+Research question 
+
+Can code capacity be allocated according to local data density or prefix crowding, rather than encouraging global uniformity? 
+
+Possible directions 
+
+stronger balancing only for overloaded prefixes; 
+
+density-aware code assignment; 
+
+larger effective capacity for dense embedding regions; 
+
+adaptive ID depth; 
+
+prefix-aware regularization. 
+
+Basic comparison 
+
+Vanilla RQ 
+
+Global balance regularization 
+
+Adaptive or density-aware balancing 
+
+Evaluation 
+
+utilization; 
+
+collision rate; 
+
+prefix-bucket balance; 
+
+reconstruction quality; 
+
+Recall@1/5/10. 
+
+Main objective 
+
+Test whether targeted capacity redistribution performs better than globally encouraging uniform code usage. 
+
+ 
+
+ 
+
+5. Main Experimental Tables 
+
+Table 1: ID structure 
+
+Dataset 
+
+Method 
+
+Utilization 
+
+Entropy 
+
+Collision 
+
+Mean bucket 
+
+Reconstruction error 
+
+Table 2: Retrieval performance 
+
+Dataset 
+
+Method 
+
+R@1 
+
+R@5 
+
+R@10 
+
+Table 3: Balance trade-off 
+
+Dataset 
+
+Balance strength 
+
+Utilization 
+
+Collision 
+
+Reconstruction 
+
+R@1 
+
+Table 4: Cross-dataset comparison 
+
+Property 
+
+MSCOCO 
+
+FashionIQ 
+
+Main difference 
+
+ 
+
+6. Expected story 
+
+Released GENIUS IDs reveal uneven code utilization, persistent within-dataset collisions, and strong dataset-dependent structure. 
+
+These observations motivate a broader study of RQ-ID quality beyond GENIUS. 
+
+Controlled experiments on MSCOCO and FashionIQ examine the relationship between ID structure and retrieval. 
+
+Code balancing is treated as an open question rather than a guaranteed improvement. 
+
+The study identifies which ID properties matter for broad-domain and fine-grained retrieval. 
+
+If clear evidence emerges, an adaptive capacity-allocation method is introduced as an optional extension. 
+
+ 
+
+7. Expected contributions 
+
+Diagnostic observations from a released multimodal RQ quantizer. 
+
+A controlled analysis connecting RQ-ID properties with retrieval performance. 
+
+An empirical study of the balance-fidelity-retrieval trade-off. 
+
+A comparison between broad-domain and fine-grained retrieval settings. 
+
+Practical guidance for designing RQ-based semantic IDs. 
+
+Optionally, an adaptive code-capacity allocation method.

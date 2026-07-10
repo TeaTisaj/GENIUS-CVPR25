@@ -57,7 +57,7 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-def main(config):
+def main(config, pool_only=False, query_only=False):
     is_distributed_mode = config.dist_config.distributed_mode
 
     # Set up seed for reproducibility
@@ -85,7 +85,7 @@ def main(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading CLIPScoreFusion checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint["model"])
 
     # Move model to GPUs
@@ -169,67 +169,78 @@ def main(config):
     pool_text_mask = []
 
     save_embed_path = os.path.join(config.genir_dir, model_config.emb_save_path)
-
     if utils.is_main_process():
-        print('Starting extraction query embedding!')
-        q_index = 0
-        
-    for i, batch in enumerate(tqdm(query_loader)):
-        for key in batch:
-            if isinstance(batch[key], torch.Tensor):
-                batch[key] = batch[key].to(gpu_id, non_blocking=True)  # Batch is a dictionary of tensors
+        os.makedirs(save_embed_path, exist_ok=True)
 
-        qid_list = batch.get("qid_list")
-        txt_batched = batch["txt_batched"]
-        image_batched = batch["image_batched"]
-        txt_mask_batched = batch["txt_mask_batched"]
-        image_mask_batched = batch["image_mask_batched"]
-        
-        q_img_emb, q_txt_emb = model.module.encode_multimodal_input(image_batched, txt_batched)
-        if not isinstance(qid_list, torch.Tensor):
-            qid_list = torch.LongTensor(qid_list)
-            qid_list = qid_list.to(gpu_id, non_blocking=True)
+    if pool_only:
+        if utils.is_main_process():
+            print('Skipping query extraction (--pool_only mode).')
+    else:
+        if utils.is_main_process():
+            print('Starting extraction query embedding!')
+            q_index = 0
 
-        dist.barrier()
-        if utils.get_world_size() > 1:
-            qid_list = torch.cat(utils.GatherLayer.apply(qid_list), dim=0)
-            q_txt_emb = torch.cat(utils.GatherLayer.apply(q_txt_emb), dim=0)
-            q_img_emb = torch.cat(utils.GatherLayer.apply(q_img_emb), dim=0)
-            q_text_mask = torch.cat(utils.GatherLayer.apply(txt_mask_batched), dim=0)
-            q_image_mask = torch.cat(utils.GatherLayer.apply(image_mask_batched), dim=0)
-            
+        for i, batch in enumerate(tqdm(query_loader)):
+            for key in batch:
+                if isinstance(batch[key], torch.Tensor):
+                    batch[key] = batch[key].to(gpu_id, non_blocking=True)  # Batch is a dictionary of tensors
+
+            qid_list = batch.get("qid_list")
+            txt_batched = batch["txt_batched"]
+            image_batched = batch["image_batched"]
+            txt_mask_batched = batch["txt_mask_batched"]
+            image_mask_batched = batch["image_mask_batched"]
+
+            q_img_emb, q_txt_emb = model.module.encode_multimodal_input(image_batched, txt_batched)
+            if not isinstance(qid_list, torch.Tensor):
+                qid_list = torch.LongTensor(qid_list)
+                qid_list = qid_list.to(gpu_id, non_blocking=True)
+
+            dist.barrier()
+            if utils.get_world_size() > 1:
+                qid_list = torch.cat(utils.GatherLayer.apply(qid_list), dim=0)
+                q_txt_emb = torch.cat(utils.GatherLayer.apply(q_txt_emb), dim=0)
+                q_img_emb = torch.cat(utils.GatherLayer.apply(q_img_emb), dim=0)
+                q_text_mask = torch.cat(utils.GatherLayer.apply(txt_mask_batched), dim=0)
+                q_image_mask = torch.cat(utils.GatherLayer.apply(image_mask_batched), dim=0)
+
+            dist.barrier()
+            if utils.is_main_process():
+                for j, id in enumerate(qid_list):
+                    id = id.item()
+                    if id not in query_id_to_index:
+                        query_id_to_index[id] = q_index
+                        query_img.append(q_img_emb[j].detach().cpu())
+                        query_text.append(q_txt_emb[j].detach().cpu())
+                        query_img_mask.append(q_image_mask[j].detach().cpu())
+                        query_text_mask.append(q_text_mask[j].detach().cpu())
+                        q_index += 1
+
         dist.barrier()
         if utils.is_main_process():
-            for j, id in enumerate(qid_list):
-                id = id.item()
-                if id not in query_id_to_index:
-                    query_id_to_index[id] = q_index
-                    query_img.append(q_img_emb[j].detach().cpu())
-                    query_text.append(q_txt_emb[j].detach().cpu())
-                    query_img_mask.append(q_image_mask[j].detach().cpu())
-                    query_text_mask.append(q_text_mask[j].detach().cpu())
-                    q_index += 1
+            query_dict['img'] = torch.stack(query_img, dim=0)
+            query_dict['text'] = torch.stack(query_text, dim=0)
+            query_dict['img_mask'] = torch.stack(query_img_mask, dim=0)
+            query_dict['text_mask'] = torch.stack(query_text_mask, dim=0)
+            query_dict['id_to_index'] = query_id_to_index
 
-    dist.barrier()
-    if utils.is_main_process():
-        query_dict['img'] = torch.stack(query_img, dim=0)
-        query_dict['text'] = torch.stack(query_text, dim=0)
-        query_dict['img_mask'] = torch.stack(query_img_mask, dim=0)
-        query_dict['text_mask'] = torch.stack(query_text_mask, dim=0)
-        query_dict['id_to_index'] = query_id_to_index
-
-        print('save the query dict file')
-        if config.data_config.enable_query_instruct:
-            if ckpt_config.using_pretrained:
-                torch.save(query_dict, os.path.join(save_embed_path, 'query_SFpretrained_instruction_IT_dict.pt'))
+            print('save the query dict file')
+            if config.data_config.enable_query_instruct:
+                if ckpt_config.using_pretrained:
+                    torch.save(query_dict, os.path.join(save_embed_path, 'query_SFpretrained_instruction_IT_dict.pt'))
+                else:
+                    torch.save(query_dict, os.path.join(save_embed_path, 'query_CLIPpretrained_instruction_IT_dict.pt'))
             else:
-                torch.save(query_dict, os.path.join(save_embed_path, 'query_CLIPpretrained_instruction_IT_dict.pt'))
-        else:
-            if ckpt_config.using_pretrained:
-                torch.save(query_dict, os.path.join(save_embed_path, 'query_SFpretrained_IT_dict.pt'))
-            else:
-                torch.save(query_dict, os.path.join(save_embed_path, 'query_CLIPpretrained_IT_dict.pt'))
+                if ckpt_config.using_pretrained:
+                    torch.save(query_dict, os.path.join(save_embed_path, 'query_SFpretrained_IT_dict.pt'))
+                else:
+                    torch.save(query_dict, os.path.join(save_embed_path, 'query_CLIPpretrained_IT_dict.pt'))
             
+    if query_only:
+        if utils.is_main_process():
+            print('Skipping pool extraction (--query_only mode).')
+        return
+
     if utils.is_main_process():
         print('Starting extraction pool embedding!')
         p_index = 0
@@ -296,6 +307,16 @@ if __name__ == "__main__":
         default="/data/GENIUS/mbeir_data",
         help="Path to mbeir dataset directory",
     )
+    parser.add_argument(
+        "--pool_only",
+        action="store_true",
+        help="Skip query extraction and only extract candidate pool embeddings.",
+    )
+    parser.add_argument(
+        "--query_only",
+        action="store_true",
+        help="Skip pool extraction and only extract query embeddings.",
+    )
     args = parser.parse_args()
     print(f"Loading config from {args.config_path}")
     config = OmegaConf.load(args.config_path)
@@ -310,7 +331,7 @@ if __name__ == "__main__":
     config.dist_config.gpu_id = args.gpu
     config.dist_config.distributed_mode = args.distributed
 
-    main(config)
+    main(config, pool_only=args.pool_only, query_only=args.query_only)
 
     # Destroy the process group
     if config.dist_config.distributed_mode:

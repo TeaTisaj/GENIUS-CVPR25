@@ -1,2 +1,41 @@
 **/.DS_Store
-/checkpoint/*.pth
+
+# Checkpoints and large binaries
+/checkpoint/**/*.pth
+/checkpoint/**/*.pt
+GENIUS/
+
+# Extracted embeddings and generated codes
+extracted_embed
+gen_code/
+
+# Training/eval outputs
+retrieval_results/
+logger/
+
+# Compiled extensions
+**/__pycache__/
+*.so
+
+# Stray Slurm logs
+slurm-*.out
+
+# Generated graphify output
+graphify-out/
+
+# In-progress paper drafts (not for public repo)
+/paper/
+/paper-ecir/
+/paper-template/
+
+# Personal notes and plans
+TLDR_new_session.md
+meeting_notes_*.md
+mentor_questions.md
+cxr_plan.md
+plan_*.md
+new_guidelines.md
+*_draft_*.md
+
+# Installers
+Miniconda3-*.sh

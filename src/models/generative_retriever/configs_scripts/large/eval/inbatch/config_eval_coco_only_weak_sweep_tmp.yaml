@@ -1,0 +1,84 @@
+codebook_config:
+  codebook_level: 8
+  codebook_vocab: 4096
+  quantizer_path: /fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage1/rq_clip_large/Large/Instruct/CocoWeak/rq_clip_large_epoch_140.pth
+data_config:
+  cand_pool_dir_name: cand_pool/local
+  enable_query_instruct: true
+  extracted_dir: extracted_embed/CLIP_SF/cand
+  image_size: 224, 224
+  in_batch_neg_num: 0
+  is_extracted: true
+  query_instruct_path: instructions/query_instructions.tsv
+  shuffle_cand: false
+  test_dir_name: query/test
+  train_dir_name: query/train
+  union_cand_pool_dir_name: cand_pool/global
+  val_dir_name: query/val
+dataloader_config:
+  batch_size: 256
+  num_workers: 4
+dist_config:
+  dist_url: env://
+experiment:
+  description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
+  exp_name: CocoOnlyWeak
+  instruct_status: Instruct
+  path_suffix: ${model.short_name}/${model.size}/${experiment.instruct_status}/${experiment.exp_name}/
+model:
+  ckpt_config:
+    ckpt_dir: /fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage2/${experiment.path_suffix}
+    ckpt_name: genius_t5small_epoch_25.pth
+  clip_vision_model_name: ViT-L/14
+  gather_embeddings: true
+  name: T5GenerativeRetriever
+  pretrained_clip_model_dir: checkpoint/CLIP/
+  pretrained_config:
+    pretrained_dir: checkpoint/CLIP_SF
+    pretrained_name: clip_sf_large.pth
+    using_pretrained: true
+  short_name: GENIUS_t5small
+  size: Large
+  trie_type: trie_cpp
+retrieval_config:
+  cand_pools_config:
+    cand_pools_name_to_gen_code:
+    - mscoco_task0_test
+    - mscoco_task3_test
+    enable_gen_code: false
+    gen_code_union_pool: false
+  gen_code_dir_name: gen_code
+  index_dir_name: index
+  num_beams: 50
+  qrel_dir_name: qrels
+  rerank: false
+  results_dir_name: retrieval_results
+  test_datasets_config:
+    correspond_cand_pools_name:
+    - mscoco_task0_test
+    - mscoco_task3_test
+    correspond_metrics_name:
+    - Recall@1, Recall@5, Recall@10
+    - Recall@1, Recall@5, Recall@10
+    correspond_qrels_name:
+    - mscoco_task0
+    - mscoco_task3
+    datasets_name:
+    - mscoco_task0
+    - mscoco_task3
+    enable_gen_code: true
+    enable_retrieve: true
+  train_datasets_config:
+    correspond_cand_pools_name: null
+    datasets_name: null
+    enable_gen_code: false
+    enable_retrieve: false
+  use_fp16: true
+  val_datasets_config:
+    correspond_cand_pools_name: null
+    correspond_qrels_name: null
+    datasets_name: null
+    enable_gen_code: false
+    enable_retrieve: false
+  write_to_tsv: true
+seed: 2023

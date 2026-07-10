@@ -136,11 +136,15 @@ def generate_codes_for_dataset(
             gathered_ids = None
             sizes = None
 
+        dist.barrier()
+
         dist.gather(codes_tensor, gather_list=gathered_codes, dst=0)
         if use_embedding:
             dist.gather(encode_tensor, gather_list=gathered_encodes, dst=0)
         dist.gather(id_tensor, gather_list=gathered_ids, dst=0)
         dist.gather(size_tensor, gather_list=sizes, dst=0)
+
+        dist.barrier()
 
         if dist.get_rank() == 0:
             torch.set_num_threads(total_cores)
@@ -917,7 +921,7 @@ def generative_retrieve(config):
             with open(run_file_path, "w") as run_file:
                 for idx, indices in enumerate(retrieved_indices):
                     qid = unhash_qid(query_ids[idx])
-                    task_id = qid_to_taskid[qid]
+                    task_id = qid_to_taskid.get(qid, qid.split(':')[0])
                     for rank, retrieved_id in enumerate(indices, start=1):
                         run_file.write(f"{qid} Q0 {retrieved_id} {rank} {1.0} {run_id} {task_id}\n")
             print(f"Retriever: Run file saved to {run_file_path}")
@@ -926,7 +930,9 @@ def generative_retrieve(config):
             for i, retrieved_indices_for_qid in enumerate(retrieved_indices):
                 retrieved_indices_for_qid = [unhash_did(idx) for idx in retrieved_indices_for_qid]
                 qid = unhash_qid(query_ids[i])
-                relevant_docs = qrel[qid]
+                relevant_docs = qrel.get(qid)
+                if relevant_docs is None:
+                    continue
                 task_id = qid_to_taskid[qid]
                 
                 # Compute Recall@k for each metric

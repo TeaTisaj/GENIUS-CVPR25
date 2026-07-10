@@ -329,7 +329,7 @@ def generate_embeds_for_config(model, img_preprocess_fn, tokenizer, config):
                     cand_pool_name = cand_pool_name.lower()
                     embed_data_name = f"{split_name}_{cand_pool_name}_IT_dict.pt"
                     file_path = os.path.join(save_embed_path, embed_data_name)
-                    dataset_split_dict = torch.load(file_path)
+                    dataset_split_dict = torch.load(file_path, weights_only=False)
                     all_img.append(dataset_split_dict['img'])
                     all_text.append(dataset_split_dict['text'])
                     all_img_mask.append(dataset_split_dict['img_mask'])
@@ -403,7 +403,7 @@ def main(config):
         checkpoint_path = os.path.join(config.genir_dir, ckpt_config.ckpt_dir, ckpt_config.ckpt_name)
         assert os.path.exists(checkpoint_path), f"Checkpoint file {checkpoint_path} does not exist."
         print(f"loading CLIPScoreFusion checkpoint from {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint["model"])
 
     # Move model to GPUs

@@ -205,7 +205,7 @@ def main(config):
         model, msg = load_checkpoint(model, checkpoint_path)
         print("missing keys:")
         print(msg.missing_keys)
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
         optimizer.load_state_dict(checkpoint["optimizer"])
         scaler.load_state_dict(checkpoint["scaler"])
 

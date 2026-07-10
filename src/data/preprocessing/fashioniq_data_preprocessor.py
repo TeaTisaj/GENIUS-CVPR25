@@ -44,6 +44,7 @@ def fashioniq_to_mbeir_entry(
     fashioniq_entry,
     candidate_pool,
     mbeir_data_dir,
+    image_name_set=None,
     include_src_content=True,
     concatenate_captions=True,
 ):
@@ -116,7 +117,11 @@ def fashioniq_to_mbeir_entry(
         }
         query_img_name = fashioniq_entry["candidate"] + ".jpg"
         query_img_path = os.path.join("mbeir_images", "fashioniq_images", query_img_name)
-        if not is_valid_image(os.path.join(mbeir_data_dir, query_img_path)):
+        if image_name_set is not None:
+            img_present = query_img_name in image_name_set
+        else:
+            img_present = os.path.exists(os.path.join(mbeir_data_dir, query_img_path))
+        if not img_present:
             print(f"Warning: Invalid query_img_path : {query_img_path}")
             continue  # query image is missing
         mbeir_entry["query_img_path"] = query_img_path
@@ -160,6 +165,7 @@ def fashioniq_to_mbeir(
     fashioniq_data,
     candidate_pool_file_path,
     mbeir_data_dir,
+    image_name_set=None,
     include_src_content=True,
     concatenate_captions=True,
 ):
@@ -176,8 +182,9 @@ def fashioniq_to_mbeir(
             fashioniq_entry,
             candidate_pool,
             mbeir_data_dir,
-            include_src_content,
-            concatenate_captions,
+            image_name_set=image_name_set,
+            include_src_content=include_src_content,
+            concatenate_captions=concatenate_captions,
         )
         if mbeir_entries:  # Skip invalid entries
             mbeir_entries_merged.extend(mbeir_entries)
@@ -208,23 +215,23 @@ def generate_fashioniq_candidate_pool(
         for image_name in image_name_set:
             # Note: we always store relative paths to MBEIR data directory
             img_path_rel = os.path.join("mbeir_images", "fashioniq_images", image_name)
-            img_path_abs = os.path.join(mbeir_data_dir, img_path_rel)
 
-            # if the image is valid, add it to the candidate pool
-            if is_valid_image(img_path_abs):
-                candidate_pool_entry = {
-                    "txt": None,
-                    "img_path": img_path_rel,
-                    "modality": "image",
-                    "did": f"{FASIONIQ_DATASET_ID}:{document_id}",
+            # image_name came from os.listdir so it exists — no stat needed
+            candidate_pool_entry = {
+                "txt": None,
+                "img_path": img_path_rel,
+                "modality": "image",
+                "did": f"{FASIONIQ_DATASET_ID}:{document_id}",
+            }
+            if include_src_content:
+                src_content = {
+                    "img_id": os.path.splitext(image_name)[0],
                 }
-                if include_src_content:
-                    src_content = {
-                        "img_id": os.path.splitext(image_name)[0],
-                    }  # Cast to string to avoid JSON serialization error
-                    candidate_pool_entry["src_content"] = json.dumps(src_content)
-                document_id += 1  # increment for next entry
-                outfile.write(json.dumps(candidate_pool_entry) + "\n")
+                candidate_pool_entry["src_content"] = json.dumps(src_content)
+            document_id += 1
+            outfile.write(json.dumps(candidate_pool_entry) + "\n")
+
+    return image_name_set
 
 
 def parse_arguments():
@@ -291,9 +298,10 @@ def main():
         parallel_process_image_directory(fashioniq_images_dir, num_processes=cpu_count())
 
     # Generate candidate pool
+    image_name_set = None
     if args.enable_candidate_pool:
         print("Generating Fashion IQ candidate pool in mbeir format...")
-        generate_fashioniq_candidate_pool(
+        image_name_set = generate_fashioniq_candidate_pool(
             fashioniq_images_dir,
             fashioniq_candidate_pool_path,
             args.mbeir_data_dir,
@@ -301,6 +309,10 @@ def main():
         )
         print(f"Candidate pool saved to {fashioniq_candidate_pool_path}")
         print_mbeir_format_cand_pool_stats(fashioniq_candidate_pool_path)
+
+    # Compute image_name_set if not already available (e.g. when skipping --enable_candidate_pool)
+    if image_name_set is None and args.enable_mbeir_conversion:
+        image_name_set = {fname for fname in os.listdir(fashioniq_images_dir) if fname.endswith(".jpg")}
 
     # Convert Fashion IQ data to MBEIR format
     if args.enable_mbeir_conversion:
@@ -332,6 +344,7 @@ def main():
                     data,
                     fashioniq_candidate_pool_path,
                     args.mbeir_data_dir,
+                    image_name_set=image_name_set,
                     include_src_content=True,
                     concatenate_captions=True,
                 )

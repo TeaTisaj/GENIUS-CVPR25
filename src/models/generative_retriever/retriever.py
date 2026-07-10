@@ -6,8 +6,9 @@ Generative Retriever Model Implementation
 import os
 import re
 import math
-import random 
+import random
 import string
+import hashlib
 from typing import Optional, Tuple, List, Dict, Any
 import pickle
 
@@ -136,7 +137,7 @@ class T5ForGenerativeRetrieval(nn.Module):
         self.config = config
         self.quantizer = RQ(config=config, clip_model=clip_model)
         rq_model_path = os.path.join(config.genir_dir, config.codebook_config.quantizer_path)
-        self.quantizer.load_state_dict(torch.load(rq_model_path, map_location=torch.device('cpu'))["model"], strict=False)
+        self.quantizer.load_state_dict(torch.load(rq_model_path, map_location=torch.device('cpu'), weights_only=False)["model"], strict=False)
         self.quantizer.eval()
         for _, param in self.quantizer.named_parameters():
             param.requires_grad = False
@@ -399,7 +400,7 @@ class T5ForGenerativeRetrieval(nn.Module):
     def distribute_trie(self, cand_codes, trie_save_path):
         """
         Distribute Trie index across processes.
-        
+
         Args:
             cand_codes: Candidate codes to index
             trie_save_path: Path to save the Trie index
@@ -413,13 +414,26 @@ class T5ForGenerativeRetrieval(nn.Module):
             base_path = trie_save_path[:-len("trie.pkl")]
             trie_save_path = base_path + suffix_map.get(self.trie_type, "trie.pkl")
 
+        # Cached tries are keyed on trie_save_path alone, which does not change when
+        # the underlying cand_codes do (e.g. candidate-pool fix, RQ checkpoint swap,
+        # subsampling). A content hash sidecar lets us detect that mismatch instead of
+        # silently decoding against a stale trie.
+        hash_path = trie_save_path + ".hash"
+        current_hash = hashlib.md5(np.ascontiguousarray(cand_codes).tobytes()).hexdigest()
+        cache_is_stale = True
+        if os.path.exists(trie_save_path) and os.path.exists(hash_path):
+            with open(hash_path, 'r') as f:
+                cache_is_stale = f.read().strip() != current_hash
+
         if self.trie_type == 'triecpp':
-            if dist.get_rank() == 0 and not os.path.exists(trie_save_path):
+            if dist.get_rank() == 0 and cache_is_stale:
                 trie_index = self.generative_index(cand_codes)
                 with open(trie_save_path, 'wb') as f:
                     pickle.dump(trie_index.to_dict(), f)
                     f.flush()
                     os.fsync(f.fileno())
+                with open(hash_path, 'w') as f:
+                    f.write(current_hash)
                 del trie_index
                 print(f"Log: Save candidate pool Trie from {trie_save_path}.")
 
@@ -436,12 +450,14 @@ class T5ForGenerativeRetrieval(nn.Module):
             del trie_dict
 
         else:
-            if dist.get_rank() == 0 and not os.path.exists(trie_save_path):
+            if dist.get_rank() == 0 and cache_is_stale:
                 trie_index = self.generative_index(cand_codes)
                 with open(trie_save_path, 'wb') as f:
                     pickle.dump(trie_index, f)
                     f.flush()
                     os.fsync(f.fileno())
+                with open(hash_path, 'w') as f:
+                    f.write(current_hash)
                 del trie_index
                 print(f"Log: Save candidate pool Trie from {trie_save_path}.")
             dist.barrier()
