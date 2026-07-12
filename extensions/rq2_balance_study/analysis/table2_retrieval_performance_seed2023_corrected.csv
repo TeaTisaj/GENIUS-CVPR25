@@ -1,0 +1,5 @@
+dataset,method,best_epoch,T->I Recall@1,T->I Recall@5,T->I Recall@10,I->T Recall@1,I->T Recall@5,I->T Recall@10
+MSCOCO,vanilla,25,20.86,41.59,52.38,10.52,29.28,41.40
+MSCOCO,weak,25,13.62,30.83,40.44,0.04,0.14,0.34
+MSCOCO,medium,25,9.85,23.97,32.41,0.02,0.12,0.20
+MSCOCO,strong,25,23.33,47.43,58.81,0.04,0.10,0.18

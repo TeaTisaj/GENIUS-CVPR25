@@ -38,15 +38,25 @@ CHECKPOINTS = [
     (f"{MBEIR_STAGE1_CKPT_DIR}/CocoWeak/rq_clip_large_epoch_140.pth", "weak"),
     (f"{MBEIR_STAGE1_CKPT_DIR}/CocoMedium/rq_clip_large_epoch_140.pth", "medium"),
     (f"{MBEIR_STAGE1_CKPT_DIR}/CocoStrong/rq_clip_large_epoch_140.pth", "strong"),
+    # Added 2026-07-10 for the ECIR audit's Section 6 single-seed mitigation (H1): the
+    # direction-aware-lambda Stage-1 checkpoints exist on disk independent of the Stage-2
+    # decode crashes that blocked a 3-seed retrain of Section 6's real-pipeline numbers.
+    # This probe needs no Stage-2 seed at all, so it corroborates (or contradicts) the
+    # single-seed real-pipeline result at the tokenizer level.
+    (f"{MBEIR_STAGE1_CKPT_DIR}/CocoImg3txt0/rq_clip_large_epoch_140.pth", "img3txt0"),
+    (f"{MBEIR_STAGE1_CKPT_DIR}/CocoImg3txt0p3/rq_clip_large_epoch_140.pth", "img3txt0p3"),
 ]
 
 # Real-pipeline reference (T5 + trie + beam search), for comparison -- from
-# rq1-rq3_final_tables.md Table 2, 3-seed means.
+# rq1-rq3_final_tables.md Table 2, 3-seed means (vanilla/weak/medium/strong) and the
+# direction-aware-lambda single-seed table (img3txt0/img3txt0p3, Section 6 of the paper).
 REAL_PIPELINE_REFERENCE = {
     "vanilla": {"T->I": 18.52, "I->T": 9.44},
     "weak": {"T->I": 14.13, "I->T": 0.04},
     "medium": {"T->I": 10.36, "I->T": 0.02},
     "strong": {"T->I": 22.60, "I->T": 0.04},
+    "img3txt0": {"T->I": 7.97, "I->T": 0.12},
+    "img3txt0p3": {"T->I": 5.45, "I->T": 0.08},
 }
 
 

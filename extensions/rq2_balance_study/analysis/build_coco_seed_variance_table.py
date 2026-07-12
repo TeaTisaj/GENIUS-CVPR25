@@ -19,7 +19,7 @@ import csv
 import os
 import statistics
 
-VARIANTS = ["vanilla", "weak", "medium", "strong"]
+DEFAULT_VARIANTS = ["vanilla", "weak", "medium", "strong"]
 HEADLINE_COLUMN = "T->I Recall@1"
 TASK_LABEL = "text -> image"
 
@@ -50,13 +50,17 @@ def main():
                          help="retrieval_results/coco_seed_variance/ (from "
                               "slurm_eval_coco_seed_variance.sh)")
     parser.add_argument("--seeds", nargs="+", type=int, default=[7, 13])
+    parser.add_argument("--variants", nargs="+", default=DEFAULT_VARIANTS,
+                         help="Subset of variants to include (default: all four). "
+                              "Added 2026-07-10 for the ECIR audit's B1 follow-up, which "
+                              "only needed vanilla/strong at extra seeds.")
     parser.add_argument("--out_csv", required=True)
     args = parser.parse_args()
 
     real_r1 = load_real_r1(args.table2_csv)
 
     rows = []
-    for variant in VARIANTS:
+    for variant in args.variants:
         values = {"seed2023": real_r1[variant]}
         for seed in args.seeds:
             values[f"seed{seed}"] = load_seed_variant_r1(args.sweep_dir, variant, seed)

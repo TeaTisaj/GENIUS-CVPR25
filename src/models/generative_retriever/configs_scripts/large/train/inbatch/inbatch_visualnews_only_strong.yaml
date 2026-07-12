@@ -14,9 +14,6 @@ data_config:
   shuffle_cand: true
   train_cand_pool_path: cand_pool/local/mbeir_visualnews_train_cand_pool.jsonl
   train_query_data_path: query/train/mbeir_visualnews_train_combined.jsonl
-  # No true validation split exists for VisualNews here (see the paper's
-  # disclosed note); enable_eval is false below, so these are inert
-  # placeholders, mirroring config_test_coco_queries.yaml's convention.
   val_cand_pool_path: cand_pool/local/mbeir_visualnews_task0_test_cand_pool.jsonl
   val_query_data_path: query/test/mbeir_visualnews_task0_test.jsonl
 dataloader_config:

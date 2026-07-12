@@ -1,9 +1,9 @@
 codebook_config:
   codebook_level: 8
   codebook_vocab: 4096
-  pool_path: extracted_embed/CLIP_SF/train_visualnews/pool_SFpretrained_IT_dict.pt
-  quantizer_path: /fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage1/rq_clip_large/Large/Instruct/VisualnewsVanilla/rq_clip_large_epoch_140.pth
-  query_path: extracted_embed/CLIP_SF/train_visualnews/query_SFpretrained_instruction_IT_dict.pt
+  pool_path: extracted_embed/CLIP_SF/train/pool_SFpretrained_IT_dict.pt
+  quantizer_path: checkpoint/rq_clip_large/Large/Instruct/CocoVanilla/rq_clip_large_epoch_140.pth
+  query_path: extracted_embed/CLIP_SF/train/query_SFpretrained_instruction_IT_dict.pt
 data_config:
   enable_query_instruct: true
   hard_neg_num: 0
@@ -12,10 +12,10 @@ data_config:
   query_instruct_path: instructions/query_instructions.tsv
   returns: null
   shuffle_cand: true
-  train_cand_pool_path: cand_pool/local/mbeir_visualnews_train_cand_pool.jsonl
-  train_query_data_path: query/train/mbeir_visualnews_train_combined.jsonl
-  val_cand_pool_path: cand_pool/local/mbeir_visualnews_task0_test_cand_pool.jsonl
-  val_query_data_path: query/test/mbeir_visualnews_task0_test.jsonl
+  train_cand_pool_path: cand_pool/global/mbeir_coco_fashioniq_train_cand_pool.jsonl
+  train_query_data_path: query/union_train/mbeir_coco_only_train_filtered.jsonl
+  val_cand_pool_path: cand_pool/global/mbeir_coco_fashioniq_val_cand_pool.jsonl
+  val_query_data_path: query/union_val/mbeir_coco_fashioniq_val.jsonl
 dataloader_config:
   num_workers: 4
   train_batch_size: 256
@@ -29,7 +29,7 @@ evaluator:
   print_freq: 10
 experiment:
   description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
-  exp_name: VisualnewsOnlyVanillaSeed7
+  exp_name: CocoOnlyVanillaSeed21
   instruct_status: Instruct
   path_suffix: ${model.short_name}/${model.size}/${experiment.instruct_status}/${experiment.exp_name}/
 hyperparameter_config:
@@ -52,7 +52,7 @@ model:
     using_pretrained: true
   short_name: GENIUS_t5small
   size: Large
-seed: 7
+seed: 21
 trainer_config:
   eval_steps: 500
   gradient_accumulation_steps: 1
