@@ -492,10 +492,27 @@ class T5ForGenerativeRetrieval(nn.Module):
             if prefix[0] == self.tokenizer.pad_token_id:
                 prefix = prefix[1:]
             valid_tokens = self.trie_index.get(prefix)
-            if valid_tokens is None:
-                return []
-            else:
-                return valid_tokens
+            if not valid_tokens:
+                # Severely collapsed codebooks (e.g. direction-aware lambda's
+                # img3txt0/img3txt0p3) can push a beam into a prefix with zero
+                # real trie continuations -- HF's constrained beam search then
+                # raises "prefix_allowed_tokens_fn returned an empty list" and
+                # kills the whole eval batch. This beam has already diverged
+                # from every real candidate at this prefix, so its eventual
+                # full sequence cannot match a real candidate regardless of
+                # what we return here; falling back to the trie's top-level
+                # token set keeps it alive (same output length/shape as every
+                # other beam, so downstream reshape/decode is unaffected)
+                # instead of crashing the batch for the other 49 beams too.
+                print(f"Warn: prefix_allowed_tokens_fn dead-end for batch {batch_id} at "
+                      f"prefix len {len(prefix)} -- falling back to top-level tokens "
+                      f"instead of crashing (see retriever.py comment).")
+                # self.trie_index.get([]) is the same root-level lookup used for the
+                # very first decode step, and is implemented consistently across all
+                # three trie backends (Python Trie, MarisaTrie, C++ Trie), unlike
+                # reaching into a backend-specific internal attribute.
+                return self.trie_index.get([])
+            return valid_tokens
 
         with torch.no_grad():
             generated = self.id_generator.generate(
