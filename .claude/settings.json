@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdflatex -interaction=nonstopmode main.tex)",
+      "Bash(bibtex main *)",
+      "Bash(sacct -j 335170,335171 --format=JobID,State,Elapsed -X)",
+      "Bash(sacct -j 335170,335171 --format=JobID,State,Elapsed,Start -X)",
+      "Bash(/home/tcetoje/miniconda3/envs/genius2/bin/python3 -c \"import scipy; print\\('ok'\\)\")",
+      "Bash(grep -o '^@[a-z]*{[^,]*' references.bib)",
+      "Bash(grep -n \"seed\\\\$=2023\\\\$\" /home/tcetoje/GENIUS-CVPR25/paper-ecir/sections/08_discussion_limitations.tex)"
+    ]
+  }
+}

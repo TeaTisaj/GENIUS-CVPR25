@@ -1,0 +1,70 @@
+balance_loss_config:
+  enabled: true
+  lambda: 3.0
+  temperature: 100.0
+codebook_config:
+  codebook_level: 8
+  codebook_vocab: 4096
+  pool_path: extracted_embed/CLIP_SF/train/pool_SFpretrained_IT_dict.pt
+  query_path: extracted_embed/CLIP_SF/train/query_SFpretrained_instruction_IT_dict.pt
+data_config:
+  enable_query_instruct: true
+  hard_neg_num: 0
+  image_size:
+  - 224
+  - 224
+  in_batch_neg_num: 0
+  query_instruct_path: instructions/query_instructions.tsv
+  shuffle_cand: true
+  train_cand_pool_path: cand_pool/local/mbeir_mscoco_task0_cand_pool.jsonl
+  train_query_data_path: query/train/mbeir_mscoco_task0_train.jsonl
+  val_cand_pool_path: cand_pool/local/mbeir_mscoco_task0_cand_pool.jsonl
+  val_query_data_path: query/val/mbeir_mscoco_task0_val.jsonl
+dataloader_config:
+  num_workers: 4
+  train_batch_size: 2000
+  valid_batch_size: 128
+dist_config:
+  dist_url: env://
+evaluator:
+  enable_eval: false
+  eval_freq: 10
+  eval_start: 20
+  print_freq: 10
+  save_freq: 10
+experiment:
+  description: ${model.name} ${model.size} ${experiment.instruct_status} ${experiment.exp_name}
+  exp_name: CocoStrongS1Seed7
+  instruct_status: Instruct
+  path_suffix: ${model.short_name}/${model.size}/${experiment.instruct_status}/${experiment.exp_name}/
+logger_config:
+  logger_out_dir: logger/${experiment.path_suffix}
+  logger_out_file_name: train.log
+model:
+  ckpt_config:
+    ckpt_dir: /fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage1/${experiment.path_suffix}
+    ckpt_name: ''
+    resume_training: false
+  clip_vision_model_name: ViT-L/14
+  gather_embeddings: true
+  name: rq_clip_large
+  pretrained_clip_model_dir: checkpoint/CLIP/
+  pretrained_config:
+    pretrained_dir: checkpoint/CLIP_SF
+    pretrained_name: clip_sf_large.pth
+    using_pretrained: true
+  short_name: rq_clip_large
+  size: Large
+seed: 7
+trainer_config:
+  eval_steps: 500
+  gradient_accumulation_steps: 1
+  learning_rate: 1e-4
+  num_train_epochs: 150
+  print_freq: 10
+  warmup_steps: 0
+wandb_config:
+  enabled: false
+  experiment_name: ${experiment.description}
+  wandb_key: wandb_key
+  wandb_project: GENIR

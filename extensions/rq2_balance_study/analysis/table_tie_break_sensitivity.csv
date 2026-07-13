@@ -1,0 +1,3 @@
+variant,n_queries,current_R@1_pct,expected_random_tiebreak_R@1_pct,adversarial_worst_case_R@1_pct,mean_top1_group_size_when_gold_present,n_queries_with_gold_in_top1_group
+vanilla,24809,20.855,20.839,20.827,1.0,5174
+strong,24809,23.334,23.312,23.294,1.0,5789
