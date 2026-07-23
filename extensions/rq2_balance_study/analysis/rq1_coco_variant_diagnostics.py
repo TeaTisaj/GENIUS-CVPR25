@@ -49,6 +49,16 @@ DATASET_CONFIGS = {
         "cand_pool_path": "cand_pool/local/mbeir_fashioniq_task7_cand_pool.jsonl",
         "pool_dict_rel_path": "extracted_embed/CLIP_SF/cand/cand_pool_fashioniq_task7_IT_dict.pt",
     },
+    # Added for ECIR paper Section 7 (VisualNews) -- only vanilla/strong exist for this
+    # dataset (Section 7's own 2-point {0,3.0} design, not the 4-point COCO/FashionIQ grid).
+    "visualnews": {
+        "variants": {
+            "vanilla": "/fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage1/rq_clip_large/Large/Instruct/VisualnewsVanilla/rq_clip_large_epoch_140.pth",
+            "strong": "/fnwi_fs/ivi/irlab/personal/tcetoje/mbeir_data/genius_checkpoints_stage1/rq_clip_large/Large/Instruct/VisualnewsStrong/rq_clip_large_epoch_140.pth",
+        },
+        "cand_pool_path": "cand_pool/local/mbeir_visualnews_task0_cand_pool.jsonl",
+        "pool_dict_rel_path": "extracted_embed/CLIP_SF/cand/cand_pool_visualnews_task0_IT_dict.pt",
+    },
 }
 
 
