@@ -1,0 +1,148 @@
+\begin{thebibliography}{10}
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\urlprefix}{URL }
+\providecommand{\doi}[1]{https://doi.org/#1}
+
+\bibitem{bevilacqua2022seal}
+Bevilacqua, M., Ottaviano, G., Lewis, P., Yih, W.t., Riedel, S., Petroni, F.:
+  Autoregressive search engines: Generating substrings as document identifiers.
+  In: Advances in Neural Information Processing Systems (NeurIPS) (2022)
+
+\bibitem{decao2021genre}
+De~Cao, N., Izacard, G., Riedel, S., Petroni, F.: Autoregressive entity
+  retrieval. In: International Conference on Learning Representations (ICLR)
+  (2021)
+
+\bibitem{ethayarajh2019anisotropy}
+Ethayarajh, K.: How contextual are contextualized word representations?
+  comparing the geometry of {BERT}, {ELMo}, and {GPT-2} embeddings. In:
+  Proceedings of the 2019 Conference on Empirical Methods in Natural Language
+  Processing and the 9th International Joint Conference on Natural Language
+  Processing (EMNLP-IJCNLP). pp. 55--65 (2019)
+
+\bibitem{gao2019degeneration}
+Gao, J., He, D., Tan, X., Qin, T., Wang, L., Liu, T.Y.: Representation
+  degeneration problem in training natural language generation models. In:
+  International Conference on Learning Representations (ICLR) (2019)
+
+\bibitem{kim2025genius}
+Kim, S., Zhu, X., Lin, X., Bastan, M., Gray, D., Kwak, S.: Genius: A generative
+  framework for universal multimodal search. In: Proceedings of the IEEE/CVF
+  Conference on Computer Vision and Pattern Recognition (CVPR) (2025)
+
+\bibitem{kuai2024hourglass}
+Kuai, Z., Chen, Z., Wang, H., Li, M., Miao, D., Wang, B., Chen, X., Kuang, L.,
+  Han, Y., Wang, J., Tang, G., Liu, L., Wang, S., Zhuo, J.: Breaking the
+  hourglass phenomenon of residual quantization: Enhancing the upper bound of
+  generative retrieval. arXiv preprint arXiv:2407.21488  (2024)
+
+\bibitem{lee2022rqvae}
+Lee, D., Kim, C., Kim, S., Cho, M., Han, W.S.: Autoregressive image generation
+  using residual quantization. In: Proceedings of the IEEE/CVF Conference on
+  Computer Vision and Pattern Recognition (CVPR). pp. 11513--11522 (2022)
+
+\bibitem{li2024survey}
+Li, X., Jin, J., Zhou, Y., Wu, Y., Zhang, Z., Zhang, P., Zhu, Y., Dou, Z.: From
+  matching to generation: A survey on generative information retrieval. arXiv
+  preprint arXiv:2404.14851  (2024)
+
+\bibitem{lin2014mscoco}
+Lin, T.Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan, D.,
+  Doll{\'a}r, P., Zitnick, C.L.: Microsoft {COCO}: Common objects in context.
+  In: Computer Vision -- ECCV 2014. pp. 740--755 (2014)
+
+\bibitem{liu2021visualnews}
+Liu, F., Wang, Y., Wang, T., Ordonez, V.: Visual news: Benchmark and challenges
+  in news image captioning. In: Proceedings of the 2021 Conference on Empirical
+  Methods in Natural Language Processing (EMNLP) (2021)
+
+\bibitem{mentzer2024fsq}
+Mentzer, F., Minnen, D., Agustsson, E., Tschannen, M.: Finite scalar
+  quantization: {VQ-VAE} made simple. In: International Conference on Learning
+  Representations (ICLR) (2024)
+
+\bibitem{vandenoord2017vqvae}
+van~den Oord, A., Vinyals, O., Kavukcuoglu, K.: Neural discrete representation
+  learning. In: Advances in Neural Information Processing Systems (NeurIPS)
+  (2017)
+
+\bibitem{pradeep2023scale}
+Pradeep, R., Hui, K., Gupta, J., Lelkes, A.D., Zhuang, H., Lin, J., Metzler,
+  D., Tran, V.Q.: How does generative retrieval scale to millions of passages?
+  In: Proceedings of the 2023 Conference on Empirical Methods in Natural
+  Language Processing (EMNLP) (2023)
+
+\bibitem{radford2021clip}
+Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry,
+  G., Askell, A., Mishkin, P., Clark, J., Krueger, G., Sutskever, I.: Learning
+  transferable visual models from natural language supervision. In: Proceedings
+  of the 38th International Conference on Machine Learning (ICML). PMLR,
+  vol.~139, pp. 8748--8763 (2021)
+
+\bibitem{raffel2020t5}
+Raffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S., Matena, M., Zhou,
+  Y., Li, W., Liu, P.J.: Exploring the limits of transfer learning with a
+  unified text-to-text transformer. Journal of Machine Learning Research
+  \textbf{21}(140),  1--67 (2020)
+
+\bibitem{rajput2023tiger}
+Rajput, S., Mehta, N., Singh, A., Keshavan, R.H., Vu, T., Heldt, L., Hong, L.,
+  Tay, Y., Tran, V.Q., Samost, J., Kula, M., Chi, E.H., Sathiamoorthy, M.:
+  Recommender systems with generative retrieval. In: Advances in Neural
+  Information Processing Systems (NeurIPS) (2023)
+
+\bibitem{sun2023genret}
+Sun, W., Yan, L., Chen, Z., Wang, S., Zhu, H., Ren, P., Chen, Z., Yin, D.,
+  de~Rijke, M., Ren, Z.: Learning to tokenize for generative retrieval. In:
+  Advances in Neural Information Processing Systems (NeurIPS) (2023)
+
+\bibitem{tay2022dsi}
+Tay, Y., Tran, V.Q., Dehghani, M., Ni, J., Bahri, D., Mehta, H., Qin, Z., Hui,
+  K., Zhao, Z., Gupta, J., Schuster, T., Cohen, W.W., Metzler, D.: Transformer
+  memory as a differentiable search index. In: Advances in Neural Information
+  Processing Systems (NeurIPS) (2022)
+
+\bibitem{wang2024letter}
+Wang, W., Bao, H., Lin, X., Zhang, J., Li, Y., Feng, F., Ng, S.K., Chua, T.S.:
+  Learnable item tokenization for generative recommendation. In: Proceedings of
+  the 33rd ACM International Conference on Information and Knowledge Management
+  (CIKM). pp. 2400--2409 (2024)
+
+\bibitem{wang2026decoupledrq}
+Wang, X., Wang, J., Wang, Z., Bian, W., Zhang, G.: Decoupled residual
+  quantization for robust semantic ids in recommendation. arXiv preprint
+  arXiv:2606.01844  (2026)
+
+\bibitem{wang2022nci}
+Wang, Y., Hou, Y., Wang, H., Miao, Z., Wu, S., Sun, H., Chen, Q., Xia, Y., Chi,
+  C., Zhao, G., Liu, Z., Xie, X., Sun, H.A., Deng, W., Zhang, Q., Yang, M.: A
+  neural corpus indexer for document retrieval. In: Advances in Neural
+  Information Processing Systems (NeurIPS) (2022)
+
+\bibitem{wei2024uniir}
+Wei, C., Chen, Y., Chen, H., Hu, H., Zhang, G., Fu, J., Ritter, A., Chen, W.:
+  Uniir: Training and benchmarking universal multimodal information retrievers.
+  In: Computer Vision -- ECCV 2024 (2024), introduces the M-BEIR benchmark
+
+\bibitem{wu2021fashioniq}
+Wu, H., Gao, Y., Guo, X., Al-Halah, Z., Rennie, S., Grauman, K., Feris, R.:
+  Fashion {IQ}: A new dataset towards retrieving images by natural language
+  feedback. In: Proceedings of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition (CVPR). pp. 11307--11317 (2021)
+
+\bibitem{zhang2023regularizedvq}
+Zhang, J., Zhan, F., Theobalt, C., Lu, S.: Regularized vector quantization for
+  tokenized image synthesis. In: Proceedings of the IEEE/CVF Conference on
+  Computer Vision and Pattern Recognition (CVPR). pp. 18467--18476 (2023)
+
+\bibitem{zhang2023irgen}
+Zhang, Y., Zhang, T., Chen, D., Wang, Y., Chen, Q., Xie, X., Sun, H., Deng, W.,
+  Zhang, Q., Yang, F., Yang, M., Guo, B.: Irgen: Generative modeling for image
+  retrieval. In: Computer Vision -- ECCV 2024 (2024)
+
+\bibitem{zhu2024simvq}
+Zhu, Y., Li, B., Xin, Y., Xia, Z., Xu, L.: Addressing representation collapse
+  in vector quantized models with one linear layer. In: Proceedings of the
+  IEEE/CVF International Conference on Computer Vision (ICCV) (2025)
+
+\end{thebibliography}

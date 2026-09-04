@@ -1,0 +1,33 @@
+\section{RQ1: Which ID-Structure Properties Track Retrieval?}
+\label{sec:rq1}
+
+\begin{table}[t]
+\centering
+\caption{ID-structure properties by balance strength $\lambda$, both datasets.}
+\label{tab:table1}
+\footnotesize
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Dataset & $\lambda$ & Utilization & Collision & Recon.\ MSE & Cosine sim.\\
+\midrule
+MSCOCO    & 0.0 (vanilla) & 57.7\% & 0.87\% & 0.000124 & 95.2\% \\
+MSCOCO    & 0.3 (weak)    & 55.9\% & 6.38\% & 0.000647 & 75.1\% \\
+MSCOCO    & 1.0 (medium)  & 63.4\% & 22.7\% & 0.000974 & 62.6\% \\
+MSCOCO    & 3.0 (strong)  & 68.2\% & 69.7\% & 0.000954 & 63.4\% \\
+\midrule
+FashionIQ & 0.0 (vanilla) & 18.4\% & 4.18\% & 0.000037 & 98.6\% \\
+FashionIQ & 0.3 (weak)    & 10.7\% & 4.37\% & 0.000255 & 90.2\% \\
+FashionIQ & 1.0 (medium)  & 11.6\% & 4.45\% & 0.000310 & 88.1\% \\
+FashionIQ & 3.0 (strong)  & 11.6\% & 4.45\% & 0.000386 & 85.2\% \\
+\midrule
+VisualNews & 0.0 (vanilla) & 53.2\% & 0.43\% & 0.000098 & 96.2\% \\
+VisualNews & 3.0 (strong)  & 55.0\% & 1.00\% & 0.000610 & 76.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Stronger $\lambda$ \emph{increases} MSCOCO utilization (57.7\%$\to$68.2\%) while \emph{degrading} reconstruction (cosine similarity 95.2\%$\to$63.4\%); FashionIQ shows the opposite sign on utilization (18.4\%$\to$11.6\%) while still degrading reconstruction. Correlating each metric against headline Recall@1 ($n=4$ per dataset, Pearson $r$, descriptive only) sharpens this: on MSCOCO, collision rate correlates \emph{positively} with Recall ($r{=}{+}0.79$) -- the worst-reconstruction, highest-collision configuration (strong) achieves the best Recall. On FashionIQ, utilization is the strongest predictor, also positive ($r{=}{+}0.90$), while collision and MSE correlate negatively ($r{=}{-}0.70$, $r{=}{-}0.75$) -- the conventional ``better reconstruction $\to$ better retrieval'' story holds here but not on MSCOCO. No ID-structure metric predicts Recall with a consistent sign across both regimes; the collapse-mitigation metrics from Section~\ref{sec:background} are, at best, incomplete and dataset-dependent proxies for retrieval quality. Strong's 69.7\% collision rate raises a natural concern: our retrieval pipeline breaks ties within an identical ID by candidate-pool file order (not similarity), so part of its Recall could be ordering luck rather than genuine discrimination. We checked directly: reconstructing each query's full tie group from its top-predicted code, expected R@1 under a random within-group tie-break (23.31\%) and even the adversarial worst case (23.29\%) both sit within 0.05 points of strong's reported 23.33\% (vanilla: 20.84\%/20.83\% vs.\ 20.86\%) -- whenever a query's gold candidate is reachable via its top-predicted code at all, that code is essentially always a singleton for that query. The collision-heavy codes are populated by candidates that rarely serve as anyone's gold target, so file-order tie-breaking is not inflating the headline gain.
+
+\paragraph{VisualNews barely restructures under the same $\lambda$, yet its Recall swings hardest.} VisualNews was tested only at $\{0,3.0\}$ (Section~\ref{sec:generality}), too few points for a correlation, but the contrast with MSCOCO is stark on its own: strong regularization moves VisualNews's utilization by only $+1.8$ points ($53.2\%\to55.0\%$) and collision by $+0.6$ points ($0.43\%\to1.00\%$) -- an order of magnitude smaller shift than MSCOCO's ($+10.5$ and $+68.8$ points respectively) -- while reconstruction still degrades comparably (cosine similarity $96.2\%\to76.6\%$). Yet VisualNews's T$\to$I Recall swings by $53\%$ relative (Section~\ref{sec:generality}), \emph{larger} than MSCOCO's $+12.3\%$ gain. ID-structure disruption and retrieval-effect magnitude are not just inconsistently signed across datasets (above) -- they are not even consistently \emph{sized}: the dataset with the smallest codebook restructuring shows the largest Recall effect.
+
+\paragraph{The hourglass phenomenon is induced by regularization, and only on MSCOCO.} Kuai et al.~\cite{kuai2024hourglass} report intermediate RQ levels concentrating relative to boundary levels (``hourglass'') in recommendation-system semantic IDs. We measure this directly: for each variant, the mean relative entropy of levels 2--7 minus that of levels $\{1,8\}$ (negative = hourglass shape). On MSCOCO this score moves from $+0.03$ (vanilla, no hourglass) to $-0.37$ (strong, pronounced hourglass) monotonically with $\lambda$ -- balance regularization \emph{induces} the hourglass shape here, rather than merely failing to prevent it. On FashionIQ the score stays within $[-0.02, +0.20]$ across all four variants, never developing an hourglass shape regardless of $\lambda$. This is a third, independent facet of the same dataset-dependence this paper documents throughout, and the first empirical connection between balance regularization and the hourglass phenomenon reported in a different (single-stream, recommendation) setting.

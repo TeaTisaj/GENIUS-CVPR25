@@ -1,0 +1,127 @@
+\relax 
+\citation{tay2022dsi}
+\citation{li2024survey}
+\citation{kim2025genius}
+\citation{lee2022rqvae}
+\@writefile{toc}{\contentsline {title}{No Free Lunch for Codebook Balance: Regularization Trade-offs in Generative Multimodal Retrieval}{1}}
+\@writefile{toc}{\authcount {1}}
+\@writefile{toc}{\contentsline {author}{Tea Cetojevic Tisaj}{1}}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}}
+\newlabel{sec:intro}{{1}{2}}
+\@writefile{toc}{\contentsline {paragraph}{Contribution.}{2}}
+\citation{tay2022dsi}
+\citation{wang2022nci}
+\citation{bevilacqua2022seal}
+\citation{decao2021genre}
+\citation{rajput2023tiger}
+\citation{sun2023genret}
+\citation{zhang2023irgen}
+\citation{pradeep2023scale}
+\citation{li2024survey}
+\citation{kim2025genius}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{3}}
+\newlabel{sec:background}{{2}{3}}
+\@writefile{toc}{\contentsline {paragraph}{Generative retrieval.}{3}}
+\citation{lee2022rqvae}
+\citation{kim2025genius}
+\citation{wei2024uniir}
+\citation{radford2021clip}
+\citation{raffel2020t5}
+\citation{decao2021genre}
+\citation{vandenoord2017vqvae}
+\citation{zhang2023regularizedvq}
+\citation{mentzer2024fsq}
+\citation{zhu2024simvq}
+\citation{kuai2024hourglass}
+\citation{wang2026decoupledrq}
+\citation{wang2024letter}
+\citation{lin2014mscoco}
+\citation{wu2021fashioniq}
+\citation{liu2021visualnews}
+\@writefile{toc}{\contentsline {paragraph}{RQ and the GENIUS pipeline.}{4}}
+\@writefile{toc}{\contentsline {paragraph}{Codebook balance and collapse.}{4}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Experimental Setup}{4}}
+\newlabel{sec:setup}{{3}{4}}
+\@writefile{toc}{\contentsline {paragraph}{Datasets as contrasting regimes.}{4}}
+\citation{tay2022dsi,pradeep2023scale}
+\citation{pradeep2023scale}
+\@writefile{toc}{\contentsline {paragraph}{Pipeline, controls, and metrics.}{5}}
+\@writefile{toc}{\contentsline {paragraph}{Seed verification.}{5}}
+\@writefile{toc}{\contentsline {paragraph}{Reproducing GENIUS, before studying it.}{5}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Reproducing GENIUS's released Stage-1 checkpoint with our own union-trained Stage-2 decoder, vs.\ the original paper's published numbers.}}{6}}
+\newlabel{tab:reproduction}{{1}{6}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces ID-structure properties by balance strength $\lambda $, both datasets.}}{6}}
+\newlabel{tab:table1}{{2}{6}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}RQ1: Which ID-Structure Properties Track Retrieval?}{6}}
+\newlabel{sec:rq1}{{4}{6}}
+\citation{kuai2024hourglass}
+\@writefile{toc}{\contentsline {paragraph}{VisualNews barely restructures under the same $\lambda $, yet its Recall swings hardest.}{7}}
+\@writefile{toc}{\contentsline {paragraph}{The hourglass phenomenon is induced by regularization, and only on MSCOCO.}{7}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}RQ2/RQ3: The Balance Trade-off, and Its Reversal Across Regimes}{7}}
+\newlabel{sec:rq2rq3}{{5}{7}}
+\@writefile{toc}{\contentsline {paragraph}{The MSCOCO T$\to $I gain is real: we chased a decode-time artifact, not the effect.}{7}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Retrieval Recall by balance strength, mean $\pm $ std across seeds (headline: T$\to $I for MSCOCO, IT$\to $I for FashionIQ; other dir.: I$\to $T, MSCOCO only). MSCOCO vanilla/strong $n{=}5$ (seed 2023 re-evaluated, Section\nobreakspace  {}8\hbox {}); weak/medium R@1 $n{=}3$.}}{8}}
+\newlabel{tab:table2}{{3}{8}}
+\@writefile{toc}{\contentsline {paragraph}{The gain survives retraining the tokenizer itself, not just the decoder.}{8}}
+\@writefile{toc}{\contentsline {paragraph}{The other cost: an image-to-text collapse.}{8}}
+\@writefile{toc}{\contentsline {paragraph}{Localizing the collapse: tokenizer, not decoder.}{8}}
+\citation{ethayarajh2019anisotropy,gao2019degeneration}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Recall@1 vs.\ balance strength $\lambda $, mean $\pm $ std across seeds per point (MSCOCO vanilla/strong: 5 seeds; weak/medium: 3 seeds; FashionIQ: 3 seeds). MSCOCO's T$\to $I curve is non-monotonic -- weak/medium dip below both vanilla and strong -- but vanilla and strong themselves are tight, non-overlapping clusters; I$\to $T collapses immediately past $\lambda =0$; FashionIQ falls immediately and stays low at every regularized $\lambda $.}}{9}}
+\newlabel{fig:lambda-recall}{{1}{9}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Localizing the collapse: a dense, no-T5 probe (cosine similarity over the frozen RQ's quantized embedding, no beam search, no trie) against the real T5+beam-search pipeline, same checkpoints.}}{9}}
+\newlabel{tab:localization}{{4}{9}}
+\@writefile{toc}{\contentsline {paragraph}{A partial answer to \emph  {why} text is hit harder: text embeddings start more anisotropic.}{9}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Direction-aware $\lambda $ vs.\ the uniform baselines, MSCOCO T$\to $I / I$\to $T Recall@1, mean $\pm $ std across seeds.}}{10}}
+\newlabel{tab:direction-aware}{{5}{10}}
+\@writefile{toc}{\contentsline {paragraph}{Utilization moves in opposite directions.}{10}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Direction-Aware $\lambda $: A Natural Fix That Fails Architecturally}{10}}
+\newlabel{sec:direction-aware}{{6}{10}}
+\@writefile{toc}{\contentsline {paragraph}{The hypothesis fails on all three counts.}{10}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Unique level-1 RQ prefixes by variant -- level-1 is the first token of the semantic ID, the level constrained beam search prunes on first. (a) Image-side count tracks T$\to $I Recall (3-seed mean) almost monotonically. (b) Text-side prefixes, vanilla vs.\ img3txt0 -- both have $\lambda _{\text  {txt}}=0.0$, yet img3txt0's text codes are visibly restructured: direct evidence that image-side regularization reaches text-side structure through the shared encoder and codebook.}}{11}}
+\newlabel{fig:prefixes}{{2}{11}}
+\@writefile{toc}{\contentsline {paragraph}{Mechanism: the codebook is not decomposable per modality.}{11}}
+\@writefile{toc}{\contentsline {paragraph}{Tokenizer-level corroboration.}{11}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces VisualNews Recall@1 by balance strength, 3-seed mean $\pm $ std.}}{12}}
+\newlabel{tab:visualnews}{{6}{12}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Generality: A Third Dataset}{12}}
+\newlabel{sec:generality}{{7}{12}}
+\@writefile{toc}{\contentsline {paragraph}{Setup.}{12}}
+\@writefile{toc}{\contentsline {paragraph}{The collapse generalizes; the gain reverses.}{12}}
+\@writefile{toc}{\contentsline {paragraph}{Tokenizer-level corroboration: both directions localize before Stage-2 training.}{13}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion, Limitations, and Conclusion}{13}}
+\newlabel{sec:limitations}{{8}{13}}
+\@writefile{toc}{\contentsline {paragraph}{Correlational evidence is descriptive.}{13}}
+\@writefile{toc}{\contentsline {paragraph}{FashionIQ's small Recall is not noise.}{13}}
+\@writefile{toc}{\contentsline {paragraph}{Seed 2023's original eval was an artifact in R@1, not only R@5/R@10.}{13}}
+\citation{wang2026decoupledrq}
+\@writefile{toc}{\contentsline {paragraph}{Remaining open points, and scope.}{14}}
+\@writefile{toc}{\contentsline {paragraph}{Direction-aware $\lambda $'s decode crash: nondeterministic, not structural, and now patched.}{14}}
+\@writefile{toc}{\contentsline {paragraph}{Conclusion.}{14}}
+\bibstyle{splncs04}
+\bibdata{references}
+\bibcite{bevilacqua2022seal}{1}
+\bibcite{decao2021genre}{2}
+\bibcite{ethayarajh2019anisotropy}{3}
+\bibcite{gao2019degeneration}{4}
+\bibcite{kim2025genius}{5}
+\bibcite{kuai2024hourglass}{6}
+\bibcite{lee2022rqvae}{7}
+\bibcite{li2024survey}{8}
+\bibcite{lin2014mscoco}{9}
+\bibcite{liu2021visualnews}{10}
+\bibcite{mentzer2024fsq}{11}
+\bibcite{vandenoord2017vqvae}{12}
+\bibcite{pradeep2023scale}{13}
+\bibcite{radford2021clip}{14}
+\bibcite{raffel2020t5}{15}
+\bibcite{rajput2023tiger}{16}
+\bibcite{sun2023genret}{17}
+\bibcite{tay2022dsi}{18}
+\bibcite{wang2024letter}{19}
+\bibcite{wang2026decoupledrq}{20}
+\bibcite{wang2022nci}{21}
+\bibcite{wei2024uniir}{22}
+\bibcite{wu2021fashioniq}{23}
+\bibcite{zhang2023regularizedvq}{24}
+\bibcite{zhang2023irgen}{25}
+\bibcite{zhu2024simvq}{26}

@@ -1,0 +1,28 @@
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Datasets as contrasting regimes.} We train and evaluate on MSCOCO~\cite{lin2014mscoco}, FashionIQ~\cite{wu2021fashioniq}, and VisualNews~\cite{liu2021visualnews} independently. MSCOCO and VisualNews are both broad-domain captioning retrieval (text-to-image, image-to-text) with diverse pools, but drawn from different image/text distributions (everyday object photography vs.\ news photography and captions); FashionIQ is composed retrieval (image + modification text $\to$ target image) in one narrow domain, its pool dense with visually similar garments. We never compare absolute Recall across datasets, only relative effects within each.
+
+\paragraph{Pipeline, controls, and metrics.} For each dataset we fix the CLIP-SF encoder, extract candidate embeddings once, then train RQ tokenizers differing only in balance strength $\lambda$ -- four points $\{0, 0.3, 1.0, 3.0\}$ (vanilla/weak/medium/strong) for MSCOCO and FashionIQ, and the two most informative points $\{0, 3.0\}$ for VisualNews (Section~\ref{sec:generality}) -- holding fixed the RQ architecture, level count, codebook size (4096), the T5 retriever, and all splits/decoding settings (50-beam constrained search). The grid is approximately log-spaced from no regularization to a strength at which the balance term dominates ID structure (Table~\ref{tab:table1}); we did not sweep further points given the per-point training cost of a from-scratch RQ tokenizer and retriever. Each tokenizer's IDs retrain the same retriever from scratch. We measure \emph{ID-structure} (utilization, collision rate, reconstruction MSE/cosine similarity) and \emph{retrieval} Recall@1/5/10 on held-out test splits via the real GENIUS pipeline -- T5 + constrained beam search over the correct test pool, not a dense-embedding proxy. As context for every absolute number that follows: a dense CLIP-SF baseline with no RQ and no decoder reaches T$\to$I $55.50\%$/I$\to$T $74.00\%$ Recall@1 on the same MSCOCO pools -- discretizing into a semantic ID pays a large toll in exchange for $O(1)$-cost retrieval~\cite{tay2022dsi,pradeep2023scale}, and every regularization effect we study operates well below this ceiling.
+
+\paragraph{Seed verification.} Every headline Recall number is a mean over multiple training seeds for the retriever (Stage 2), holding the RQ tokenizer (Stage 1) fixed per variant: 3 seeds by default, extended to 5 for MSCOCO vanilla/strong specifically after a seed-count stress test (Section~\ref{sec:rq2rq3}). ID-structure/correlation statistics (Section~\ref{sec:rq1}) come from the single tokenizer per variant ($n=4$ per dataset) and are descriptive only. To separate genuine seed variance from eval-time noise, we independently re-ran evaluation on fixed MSCOCO checkpoints: vanilla/strong (well-conditioned codebooks) matched to four decimal places across two independent repeats, indicating negligible eval-repeat variance under normal conditions. img3txt0p3 (a severely collapsed codebook, Section~\ref{sec:direction-aware}) instead showed small but real run-to-run drift across three independent evals (T$\to$I R@1 $5.40\%/5.45\%/5.41\%$) -- consistent with, not contradicting, the fp16 beam-search near-tie mechanism Section~\ref{sec:limitations} uses to explain that variant's decode-crash nondeterminism.
+
+\paragraph{Reproducing GENIUS, before studying it.} Before running any balance-regularization variant, we first reproduce the released system itself: GENIUS's officially released \emph{Stage-1 RQ checkpoint} paired with our own Stage-2 decoder, trained on the full $\sim$1.3M-query M-BEIR union across 16 tasks (the officially released decoder weights are not public). Table~\ref{tab:reproduction} compares our reproduction against the paper's published numbers.
+
+\begin{table}[t]
+\centering
+\caption{Reproducing GENIUS's released Stage-1 checkpoint with our own union-trained Stage-2 decoder, vs.\ the original paper's published numbers.}
+\label{tab:reproduction}
+\footnotesize
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Dataset & Metric & Published & Reproduced \\
+\midrule
+FashionIQ & R@10 (no rerank) & $13.1\%$ & $18.3$--$18.6\%$ \\
+FashionIQ & R@10 (reranked)  & $19.2\%$ & -- \\
+MSCOCO    & T$\to$I R@1      & $40.1\%$ & $8.1\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+FashionIQ reproduces in the right range without reranking, evidence the pipeline itself is correct. MSCOCO does not: $8.1\%$ against the published $40.1\%$, consistent with capacity dilution across 16 tasks~\cite{pradeep2023scale} plus our lack of validation-based checkpoint selection and hard negatives -- training-recipe gaps we disclose rather than paper over, not architecture or codebase failures. \emph{This paper's own numbers} are lower still, for a different, deliberate reason: every variant here trains a \emph{fresh} RQ tokenizer and decoder independently per dataset (above), isolating $\lambda$ as the only difference rather than exposure to the union's larger, more diverse training distribution. The comparison this paper relies on throughout -- vanilla vs.\ weak/medium/strong \emph{within} that same from-scratch, single-dataset regime -- is unaffected by either gap, since every variant in it is trained identically apart from $\lambda$.

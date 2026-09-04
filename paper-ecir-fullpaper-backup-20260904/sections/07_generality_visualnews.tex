@@ -1,0 +1,27 @@
+\section{Generality: A Third Dataset}
+\label{sec:generality}
+
+Sections~\ref{sec:rq2rq3}--\ref{sec:direction-aware} document a striking asymmetry on MSCOCO: balance regularization significantly improves T$\to$I while reliably collapsing I$\to$T on the same checkpoints, and we localize the collapse to the RQ tokenizer itself (Table~\ref{tab:localization}). This raises an obvious question: is the I$\to$T collapse a property of MSCOCO specifically, or of RQ-based semantic IDs whenever text is the target modality, regardless of dataset? We test this on VisualNews, a broad-domain news image-captioning corpus structurally similar to MSCOCO (both T$\to$I and I$\to$T directions, a large and diverse candidate pool) but drawn from an entirely different domain (news photography and captions vs.\ everyday object photography).
+
+\paragraph{Setup.} We extract VisualNews-only local candidate pools and query splits from the M-BEIR union files already used in this project's broader union-training effort, since the original raw VisualNews source dump is not preserved in our environment; this yields 100,000 training image candidates, 99,903 training text candidates, and 99,903/100,000 T$\to$I/I$\to$T training queries. No official M-BEIR held-out test partition exists for VisualNews in our downloaded data; we therefore repurpose the union pool's validation split (19,996/20,000 T$\to$I/I$\to$T queries, never seen during training) as our test set -- a disclosed deviation from the official-test-split convention used for MSCOCO and FashionIQ, not an oversight. We train only the two most informative balance strengths, vanilla ($\lambda=0$) and strong ($\lambda=3.0$), each with the same 3-seed protocol (2023/7/13) used throughout this paper, holding every other pipeline component identical to the MSCOCO/FashionIQ setup.
+
+\begin{table}[t]
+\centering
+\caption{VisualNews Recall@1 by balance strength, 3-seed mean $\pm$ std.}
+\label{tab:visualnews}
+\footnotesize
+\begin{tabular}{@{}lrr@{}}
+\toprule
+$\lambda$ & T$\to$I R@1 (mean $\pm$ std) & I$\to$T R@1 (mean $\pm$ std) \\
+\midrule
+0.0 (vanilla) & \textbf{20.07 $\pm$ 0.11\%} & \textbf{2.88 $\pm$ 0.05\%} \\
+3.0 (strong)  & 9.43 $\pm$ 0.08\%  & 0.01 $\pm$ 0.00\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The collapse generalizes; the gain reverses.} VisualNews reproduces one half of the MSCOCO asymmetry cleanly and moves the opposite way on the other, both seed-stable. I$\to$T collapses under strong regularization exactly as on MSCOCO -- from $2.88\%$ to $0.01\%$ ($\text{std}\leq0.05$ points on both variants) -- supporting that this is a general property of shared-codebook RQ tokenizers under per-sample entropy pressure, not an MSCOCO-specific artifact, and strengthening Section~\ref{sec:rq2rq3}'s localization claim. But T$\to$I moves the opposite way from MSCOCO: strong regularization more than \emph{halves} VisualNews's T$\to$I Recall@1 ($20.07\%\to9.43\%$, a $53\%$ relative drop, std $\leq0.11$ points), a large, seed-stable drop (3 seeds, no significance test reported, unlike MSCOCO's Welch's-$t$-backed result) in the direction opposite to MSCOCO's significant $+12.3\%$ gain (Section~\ref{sec:rq2rq3}).
+
+\paragraph{Tokenizer-level corroboration: both directions localize before Stage-2 training.} The same decoder-free probe that localizes MSCOCO's I$\to$T collapse (Table~\ref{tab:localization}) runs directly on VisualNews's vanilla/strong Stage-1 checkpoints. Both effects are already present at the tokenizer level: dense I$\to$T falls $2.67\%\to0.00\%$, matching the real pipeline's $2.88\%\to0.01\%$; dense T$\to$I falls $20.22\%\to10.59\%$ ($\sim$48\% relative), closely tracking the real pipeline's $20.07\%\to9.43\%$ ($\sim$53\%). Neither direction is decoder-introduced -- both are set before Stage-2 training begins, extending Section~\ref{sec:rq2rq3}'s localization to a second corpus and both directions at once.
+
+This means the paper's central trade-off is not simply ``broad-domain wants strong regularization, fine-grained wants none'': MSCOCO and VisualNews are both broad-domain, bidirectional corpora, yet strong $\lambda$ significantly \emph{helps} T$\to$I on one (MSCOCO, Welch's-$t$-verified) and substantially \emph{hurts} it on the other (VisualNews, seed-stable but not significance-tested). The I$\to$T collapse looks like a general architectural property; whatever makes MSCOCO uniquely receptive to a T$\to$I gain looks specific to MSCOCO -- plausibly the particular density or redundancy of its candidate distribution (many near-duplicate captions per image) rather than ``broad domain'' as a category. We flag pinning down what property of MSCOCO's candidate distribution produces this reversal as the most direct follow-up this result motivates.

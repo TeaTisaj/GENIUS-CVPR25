@@ -1,0 +1,63 @@
+% ECIR 2027 FULL paper submission (pivoted from short paper 2026-07-10;
+% full-paper scope pending mentor sign-off -- revert to short-paper scope if
+% preferred) -- double-anonymous review. Deadline: Oct 5, 2026 (earlier than
+% the short-paper deadline of Oct 12) -- more page budget for the mechanism
+% story (collapse localization, hourglass connection, VisualNews generality
+% check), not more time.
+% Author/affiliation block below is intentionally anonymized for review; the real
+% author/institution/acknowledgments block is kept in main_camera_ready_authors.tex.inc
+% (not created until after acceptance) so this file does not need a rewrite later --
+% just swap the \author{...}\institute{...} block and add the Acknowledgments section back.
+%
+% NOTE: named block below is temporarily in place for supervisor (Yubao) review only --
+% swap back to the anonymized block (see ANONYMIZED FOR SUBMISSION comment) before any
+% actual double-anonymous ECIR submission.
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{2pt}
+
+\begin{document}
+
+\title{No Free Lunch for Codebook Balance: Regularization Trade-offs in Generative Multimodal Retrieval}
+
+\titlerunning{No Free Lunch for Codebook Balance}
+
+\author{Tea Cetojevic Tisaj}
+\authorrunning{T. Cetojevic Tisaj}
+\institute{IRLab Internship, University of Amsterdam \\
+Supervised by Prof.\ Maarten de Rijke \& Yubao Tang \\
+April--July 2026}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/00_abstract.tex}
+\keywords{Generative retrieval \and Residual quantization \and Semantic IDs \and Multimodal retrieval \and Codebook balance}
+\end{abstract}
+
+\input{sections/01_introduction.tex}
+\input{sections/02_background_related_work.tex}
+\input{sections/03_experimental_setup.tex}
+\input{sections/04_results_rq1_id_structure.tex}
+\input{sections/05_results_rq2_rq3_balance_tradeoff.tex}
+\input{sections/06_direction_aware_lambda.tex}
+\input{sections/07_generality_visualnews.tex}
+\input{sections/08_discussion_limitations.tex}
+
+% Acknowledgments and competing-interests statement go here in the camera-ready
+% version only (per ECIR double-anonymous review policy) -- omitted from the
+% submitted draft.
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+
+\end{document}
