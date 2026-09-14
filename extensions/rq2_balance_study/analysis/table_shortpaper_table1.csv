@@ -1,0 +1,11 @@
+dataset,variant,n_seeds,entropy_bits,collision_pct,dirA_R1_mean,dirA_R1_std,dirA_std_metric,dirA_Rk_mean,dirA_Rk_std,dirB_R1_mean,dirB_R1_std,dirA_R1_per_seed
+MSCOCO,vanilla,5,9.45,0.9,20.78,0.06,Recall@5,41.62,0.09,10.3,0.67,20.86;20.78;20.70;20.73;20.81
+MSCOCO,weak,3,7.32,6.4,13.75,0.13,Recall@5,30.88,0.05,0.05,0.02,13.62;13.77;13.87
+MSCOCO,medium,3,5.9,22.7,9.92,0.09,Recall@5,24.11,0.12,0.03,0.01,9.85;10.02;9.90
+MSCOCO,strong,5,4.32,69.7,23.33,0.11,Recall@5,47.41,0.18,0.03,0.02,23.33;23.19;23.37;23.48;23.27
+VisualNews,vanilla,3,9.95,0.4,20.07,0.11,Recall@5,37.3,0.08,2.88,0.05,20.19;19.98;20.05
+VisualNews,strong,3,8.13,1.0,9.43,0.08,Recall@5,18.59,0.02,0.01,0.0,9.43;9.51;9.35
+FashionIQ,vanilla,3,8.77,4.2,0.61,0.1,Recall@10,4.76,0.05,,,0.55;0.73;0.55
+FashionIQ,weak,3,7.45,4.4,0.27,0.06,Recall@10,1.82,0.15,,,0.22;0.33;0.25
+FashionIQ,medium,3,7.64,4.4,0.21,0.09,Recall@10,1.6,0.1,,,0.30;0.13;0.20
+FashionIQ,strong,3,7.75,4.5,0.25,0.08,Recall@10,1.6,0.1,,,0.33;0.23;0.18

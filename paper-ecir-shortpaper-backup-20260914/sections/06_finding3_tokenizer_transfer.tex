@@ -1,0 +1,27 @@
+\section{Finding 3: The Effect Originates at the Tokenizer Level and Does Not Transfer Consistently}
+\label{sec:finding3}
+
+\begin{table}[t]
+\centering
+\caption{Localizing both effects to the tokenizer (MSCOCO). The dense probe is cosine similarity over the frozen RQ's quantized embedding -- no decoder, no beam search, no trie -- run on the single Stage-1 checkpoint per variant shared by all decoder seeds; ``real'' columns repeat Table~\ref{tab:main}'s multi-seed pipeline means for comparison.}
+\label{tab:localization}
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Variant & Dense T$\to$I & Dense I$\to$T & Real T$\to$I & Real I$\to$T \\
+\midrule
+vanilla & 26.65\% & \textbf{7.52\%} & 20.78\% & \textbf{10.30\%} \\
+weak    & 17.32\% & 0.04\% & 14.13\% & 0.05\% \\
+medium  & 12.87\% & 0.00\% & 10.36\% & 0.03\% \\
+strong  & 24.23\% & 0.02\% & 23.33\% & 0.03\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Localizing both effects to the tokenizer, before decoder training.} Table~\ref{tab:localization} probes the frozen RQ embeddings directly. On MSCOCO, I$\to$T \emph{already} collapses in this dense probe for weak/medium/strong ($\leq0.04\%$, matching the real pipeline's band), while vanilla's dense I$\to$T ($7.52\%$) stays close to its real-pipeline number ($10.30\%$ mean); T$\to$I retains substantial, rank-correlated dense recall across all four variants. Regularization degrades the RQ embedding space's ability to discriminate text candidates for image queries \emph{before decoder training begins} -- which also explains why per-modality decoupling (Section~\ref{sec:finding2}) cannot fix it: the damage is already encoded in the tokenizer, a place a decoder-side loss weight cannot reach.
+
+\paragraph{VisualNews: the collapse generalizes, the gain reverses -- both localize the same way.} The same probe on VisualNews's vanilla/strong checkpoints shows both effects are tokenizer-level there too: dense I$\to$T falls $2.67\%\to0.00\%$ (matching the real pipeline's $2.88\%\to0.01\%$), and dense T$\to$I falls $20.22\%\to10.59\%$ ($\sim48\%$ relative, tracking the real pipeline's $\sim53\%$ drop). Neither direction is decoder-introduced on either dataset. One caveat on rigor: as on MSCOCO, the dense probe uses a single frozen Stage-1 checkpoint per variant, so it carries no seed variance of its own; the real-pipeline Recall it corroborates (Table~\ref{tab:main}) is a 3-seed mean, and the T$\to$I reversal it tracks is itself significant (Section~\ref{sec:finding1}). We do not report a significance test for the I$\to$T collapse on either dataset: the regularized arm sits at the Recall floor (identical across all three seeds on VisualNews, and within $0.00$--$0.04\%$ on MSCOCO), where a parametric test on a bounded metric compressed against zero would manufacture an impressive $p$-value rather than earn one. The effect size speaks for itself.
+
+\paragraph{No structural metric predicts Recall consistently across datasets.} Correlating codebook utilization, collision rate, and reconstruction quality against Recall across MSCOCO's and FashionIQ's four $\lambda$ points ($n{=}4$, Pearson $r$, descriptive) sharpens this: on FashionIQ, structural metrics track Recall almost perfectly and in the conventional direction (collision $r{=}{-}0.99$, utilization $r{=}{+}0.97$, reconstruction MSE $r{=}{-}0.94$), so the familiar ``better reconstruction $\to$ better retrieval'' story holds there. On MSCOCO the same metrics are far weaker and not even monotonic: collision rate carries a positive Pearson coefficient ($r{=}{+}0.47$) only because the best-performing configuration also has the highest collision rate, while the other three variants trend the opposite way -- its rank correlation is near-null (Spearman $\rho{=}{+}0.20$). We therefore do not claim a positive collision--Recall relationship on MSCOCO. We claim the weaker but more damaging thing: no structural metric we measured predicts Recall consistently in sign, strength, \emph{or} monotonicity across the two regimes, so structural ID metrics are, at best, incomplete and dataset-dependent proxies for retrieval quality.
+
+Together, Findings 1--3 show balance regularization's effect is neither absent nor uniform: it is real, direction-specific, tokenizer-level, and dataset-dependent in sign -- properties a practitioner cannot infer from a single dataset or direction.

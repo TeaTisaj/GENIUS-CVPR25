@@ -1,0 +1,31 @@
+\section{Finding 1: Balance Regularization Does Not Consistently Improve Retrieval}
+\label{sec:finding1}
+
+\begin{table}[t]
+\centering
+\caption{Recall@1 by dataset and balance strength $\lambda$, mean $\pm$ std across seeds. Dir.\ A = text$\to$image (MSCOCO, VisualNews) / (image,text)$\to$image (FashionIQ); Dir.\ B = image$\to$text (MSCOCO, VisualNews only). MSCOCO vanilla/strong: $n{=}5$ seeds; all other rows: $n{=}3$ seeds. Both MSCOCO's and VisualNews's vanilla-vs-strong Dir.\ A differences are significant under Welch's $t$-test (Section~\ref{sec:finding1}).}
+\label{tab:main}
+\footnotesize
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Dataset & $\lambda$ & Dir.\ A R@1 & Dir.\ B R@1 \\
+\midrule
+MSCOCO     & vanilla (0.0) & $20.78\pm0.06$ & $10.30\pm0.67$ \\
+MSCOCO     & weak (0.3)    & $14.13\pm0.53$ & $0.05\pm0.02$ \\
+MSCOCO     & medium (1.0)  & $10.36\pm0.69$ & $0.03\pm0.01$ \\
+MSCOCO     & strong (3.0)  & $\mathbf{23.33\pm0.11}$ & $0.03\pm0.02$ \\
+\midrule
+VisualNews & vanilla (0.0) & $\mathbf{20.07\pm0.11}$ & $\mathbf{2.88\pm0.05}$ \\
+VisualNews & strong (3.0)  & $9.43\pm0.08$  & $0.01\pm0.00$ \\
+\midrule
+FashionIQ  & vanilla (0.0) & $\mathbf{0.61\pm0.10}$ & -- \\
+FashionIQ  & weak (0.3)    & $0.27\pm0.06$  & -- \\
+FashionIQ  & medium (1.0)  & $0.21\pm0.09$  & -- \\
+FashionIQ  & strong (3.0)  & $0.25\pm0.08$  & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We report each dataset's primary retrieval direction as Dir.\ A -- text$\to$image (T$\to$I) for MSCOCO and VisualNews, composed (image,text)$\to$image for FashionIQ -- and, where the dataset is bidirectional, image$\to$text (I$\to$T) as Dir.\ B. Table~\ref{tab:main} shows no consistent effect of balance regularization on Dir.\ A Recall across datasets. On MSCOCO, strong regularization is significantly better than vanilla: $23.33\pm0.11\%$ vs.\ $20.78\pm0.06\%$ ($n{=}5$ seeds each), non-overlapping $\pm1$-std bands, $p<10^{-6}$ (Welch's $t$-test), a $+12.3\%$ relative gain -- and the gain holds across 3 independently retrained RQ tokenizers, not just decoder seeds: vanilla mean $21.16\pm0.47\%$ vs.\ strong mean $24.32\pm0.86\%$, every strong tokenizer beating every vanilla tokenizer. (Absolute values here are well below published GENIUS numbers -- see Section~\ref{sec:setup} -- reflecting this study's matched, from-scratch pipeline rather than a state-of-the-art reproduction.) On VisualNews, the same strong regularization instead \emph{halves} Recall ($20.07\%\to9.43\%$, $-53\%$ relative; $n{=}3$ seeds each, Welch's $t$-test, $p<10^{-7}$) -- a reversal of sign on a second broad-domain, bidirectional corpus. On FashionIQ, vanilla wins outright at every regularized $\lambda$; the ranking \emph{among} regularized strengths is not seed-stable (all values sub-1\% R@1), so we report only that any regularization hurts, not a specific optimal $\lambda$.
+
+This gain is also direction-specific -- the same MSCOCO checkpoints that improve on Dir.\ A collapse on Dir.\ B (Table~\ref{tab:main}, Section~\ref{sec:finding2}) -- and its sign even reverses on a second broad-domain, bidirectional dataset (Section~\ref{sec:finding3}); we examine both next.

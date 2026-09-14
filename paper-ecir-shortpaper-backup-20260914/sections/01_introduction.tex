@@ -1,0 +1,14 @@
+\section{Introduction}
+\label{sec:intro}
+
+Generative retrieval replaces nearest-neighbor search over dense embeddings with autoregressive generation of a discrete identifier that points directly to the target candidate~\cite{tay2022dsi}. A growing line of work builds this identifier from a residual quantizer (RQ)~\cite{lee2022rqvae}: each candidate is assigned a short sequence of discrete codes that a decoder learns to generate directly for a query, retrieving in time independent of corpus size~\cite{rajput2023tiger}. Since this code sequence is the only channel through which a candidate's identity reaches the decoder, codebook quality is a ceiling on the whole system -- and RQ codebooks are known to suffer \emph{collapse}, where a few codes absorb most assignments while the rest receive little training signal. The standard remedy is \emph{balance regularization}: an auxiliary loss that pushes code usage toward uniform.
+
+\textbf{Does more balanced code usage actually lead to better retrieval?} This is not obvious a priori: broader usage should reduce collisions between candidates, but the regularizer pulls the encoder away from the pure-reconstruction optimum, and its effect may depend on task structure -- a diverse pool may benefit from spreading code usage, while a pool of near-duplicates may need the encoder to preserve subtle differences any diversity pressure would blur. Despite balance regularization's routine adoption as a collapse remedy, its causal effect on downstream retrieval Recall is rarely evaluated directly.
+
+We study this question using GENIUS~\cite{kim2025genius}, a state-of-the-art RQ-based generative multimodal retriever, as a controlled testbed: we train RQ tokenizers at multiple regularization strengths across three datasets spanning broad-domain bidirectional and fine-grained composed retrieval (Section~\ref{sec:setup}), holding every other pipeline component fixed so regularization strength is the only difference within any comparison. We find:
+
+\begin{enumerate}
+\item \textbf{Balance regularization does not consistently improve retrieval.} It significantly raises MSCOCO text-to-image Recall, but hurts FashionIQ outright and reverses sign on VisualNews.
+\item \textbf{Its effect differs substantially across retrieval direction.} The identical regularization that helps MSCOCO text-to-image collapses image-to-text Recall on the same checkpoints, and a natural per-modality fix to decouple the two does not rescue either direction.
+\item \textbf{The degradation is already visible at the tokenizer level and does not consistently transfer across datasets.} A decoder-free probe over the frozen, pre-decoder RQ embeddings shows both effects before any decoder training begins, but neither the direction nor the magnitude of the effect is a stable, portable property.
+\end{enumerate}

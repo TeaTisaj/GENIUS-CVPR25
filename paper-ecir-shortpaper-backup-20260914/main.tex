@@ -1,0 +1,71 @@
+% ECIR 2027 SHORT paper submission (reverted from the full-paper pivot on
+% 2026-09-04, per mentor Yubao Tang's 2026-07-23 review: reframe away from
+% "GENIUS reproduction" toward a standalone codebook-balance study, GENIUS
+% introduced later as testbed, scope cut to her 3 named findings, 6-page LNCS
+% target). Deadline: short-paper track, Oct 12, 2026.
+% The full-paper draft (16pp, sent to Yubao 2026-07-23) is preserved at
+% ../paper-ecir-fullpaper-backup-20260904/ (paper-ecir/ is gitignored, so this
+% is a plain filesystem backup, not a git-recoverable one).
+% Author/affiliation block below is intentionally anonymized for review; the real
+% author/institution/acknowledgments block is kept in main_camera_ready_authors.tex.inc
+% (not created until after acceptance) so this file does not need a rewrite later --
+% just swap the \author{...}\institute{...} block and add the Acknowledgments section back.
+%
+% NOTE: named block below is temporarily in place for supervisor (Yubao) review only --
+% swap back to the anonymized block (see ANONYMIZED FOR SUBMISSION comment) before any
+% actual double-anonymous ECIR submission.
+% ANONYMIZATION CHECKLIST (do not skip the second item):
+%   1. \author{...}          -- replace the name.
+%   2. \institute{...}       -- replace the WHOLE block. The string "IRLab Internship,
+%      University of Amsterdam / Supervised by Prof. Maarten de Rijke & Yubao Tang /
+%      April--July 2026" is a STRONGER de-anonymization signal than the name itself and
+%      is easy to miss because it is substantive text, not just an identifier.
+%   3. Re-grep the compiled PDF for "Amsterdam", "IRLab", "de Rijke", "Tang" before upload.
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{2pt}
+
+\begin{document}
+
+\title{Does Codebook Balance Help Generative Multimodal Retrieval? A Controlled Study Across Datasets and Directions}
+
+\titlerunning{Does Codebook Balance Help Generative Multimodal Retrieval?}
+
+\author{Tea Cetojevic Tisaj}
+\authorrunning{T. Cetojevic Tisaj}
+\institute{IRLab Internship, University of Amsterdam \\
+Supervised by Prof.\ Maarten de Rijke \& Yubao Tang \\
+April--July 2026}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/00_abstract.tex}
+\keywords{Generative retrieval \and Residual quantization \and Semantic IDs \and Multimodal retrieval \and Codebook balance}
+\end{abstract}
+
+\input{sections/01_introduction.tex}
+\input{sections/02_background_related_work.tex}
+\input{sections/03_experimental_setup.tex}
+\input{sections/04_finding1_balance_tradeoff.tex}
+\input{sections/05_finding2_direction_dependence.tex}
+\input{sections/06_finding3_tokenizer_transfer.tex}
+\input{sections/07_limitations_conclusion.tex}
+
+% Acknowledgments and competing-interests statement go here in the camera-ready
+% version only (per ECIR double-anonymous review policy) -- omitted from the
+% submitted draft.
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,94 @@
+\begin{thebibliography}{10}
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\urlprefix}{URL }
+\providecommand{\doi}[1]{https://doi.org/#1}
+
+\bibitem{decao2021genre}
+De~Cao, N., Izacard, G., Riedel, S., Petroni, F.: Autoregressive entity
+  retrieval. In: International Conference on Learning Representations (ICLR)
+  (2021)
+
+\bibitem{ethayarajh2019anisotropy}
+Ethayarajh, K.: How contextual are contextualized word representations?
+  comparing the geometry of {BERT}, {ELMo}, and {GPT-2} embeddings. In:
+  Proceedings of the 2019 Conference on Empirical Methods in Natural Language
+  Processing and the 9th International Joint Conference on Natural Language
+  Processing (EMNLP-IJCNLP). pp. 55--65 (2019)
+
+\bibitem{kim2025genius}
+Kim, S., Zhu, X., Lin, X., et~al.: Genius: A generative framework for universal
+  multimodal search. In: Proceedings of the IEEE/CVF Conference on Computer
+  Vision and Pattern Recognition (CVPR) (2025)
+
+\bibitem{lee2022rqvae}
+Lee, D., Kim, C., Kim, S., et~al.: Autoregressive image generation using
+  residual quantization. In: Proceedings of the IEEE/CVF Conference on Computer
+  Vision and Pattern Recognition (CVPR). pp. 11513--11522 (2022)
+
+\bibitem{lin2014mscoco}
+Lin, T.Y., Maire, M., Belongie, S., et~al.: Microsoft {COCO}: Common objects in
+  context. In: Computer Vision -- ECCV 2014. pp. 740--755 (2014)
+
+\bibitem{liu2021visualnews}
+Liu, F., Wang, Y., Wang, T., Ordonez, V.: Visual news: Benchmark and challenges
+  in news image captioning. In: Proceedings of the 2021 Conference on Empirical
+  Methods in Natural Language Processing (EMNLP) (2021)
+
+\bibitem{mentzer2024fsq}
+Mentzer, F., Minnen, D., Agustsson, E., Tschannen, M.: Finite scalar
+  quantization: {VQ-VAE} made simple. In: International Conference on Learning
+  Representations (ICLR) (2024)
+
+\bibitem{vandenoord2017vqvae}
+van~den Oord, A., Vinyals, O., Kavukcuoglu, K.: Neural discrete representation
+  learning. In: Advances in Neural Information Processing Systems (NeurIPS)
+  (2017)
+
+\bibitem{pradeep2023scale}
+Pradeep, R., Hui, K., Gupta, J., et~al.: How does generative retrieval scale to
+  millions of passages? In: Proceedings of the 2023 Conference on Empirical
+  Methods in Natural Language Processing (EMNLP) (2023)
+
+\bibitem{radford2021clip}
+Radford, A., Kim, J.W., Hallacy, C., et~al.: Learning transferable visual
+  models from natural language supervision. In: Proceedings of the 38th
+  International Conference on Machine Learning (ICML). PMLR, vol.~139, pp.
+  8748--8763 (2021)
+
+\bibitem{raffel2020t5}
+Raffel, C., Shazeer, N., Roberts, A., et~al.: Exploring the limits of transfer
+  learning with a unified text-to-text transformer. Journal of Machine Learning
+  Research  \textbf{21}(140),  1--67 (2020)
+
+\bibitem{rajput2023tiger}
+Rajput, S., Mehta, N., Singh, A., et~al.: Recommender systems with generative
+  retrieval. In: Advances in Neural Information Processing Systems (NeurIPS)
+  (2023)
+
+\bibitem{tay2022dsi}
+Tay, Y., Tran, V.Q., Dehghani, M., et~al.: Transformer memory as a
+  differentiable search index. In: Advances in Neural Information Processing
+  Systems (NeurIPS) (2022)
+
+\bibitem{wang2024letter}
+Wang, W., Bao, H., Lin, X., et~al.: Learnable item tokenization for generative
+  recommendation. In: Proceedings of the 33rd ACM International Conference on
+  Information and Knowledge Management (CIKM). pp. 2400--2409 (2024)
+
+\bibitem{wei2024uniir}
+Wei, C., Chen, Y., Chen, H., et~al.: Uniir: Training and benchmarking universal
+  multimodal information retrievers. In: Computer Vision -- ECCV 2024 (2024),
+  introduces the M-BEIR benchmark
+
+\bibitem{wu2021fashioniq}
+Wu, H., Gao, Y., Guo, X., et~al.: Fashion {IQ}: A new dataset towards
+  retrieving images by natural language feedback. In: Proceedings of the
+  IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp.
+  11307--11317 (2021)
+
+\bibitem{zhang2023regularizedvq}
+Zhang, J., Zhan, F., Theobalt, C., Lu, S.: Regularized vector quantization for
+  tokenized image synthesis. In: Proceedings of the IEEE/CVF Conference on
+  Computer Vision and Pattern Recognition (CVPR). pp. 18467--18476 (2023)
+
+\end{thebibliography}

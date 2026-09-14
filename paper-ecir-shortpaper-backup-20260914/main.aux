@@ -1,0 +1,75 @@
+\relax 
+\citation{tay2022dsi}
+\citation{lee2022rqvae}
+\citation{rajput2023tiger}
+\@writefile{toc}{\contentsline {title}{Does Codebook Balance Help Generative Multimodal Retrieval? A Controlled Study Across Datasets and Directions}{1}}
+\@writefile{toc}{\authcount {1}}
+\@writefile{toc}{\contentsline {author}{Tea Cetojevic Tisaj}{1}}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}}
+\newlabel{sec:intro}{{1}{1}}
+\citation{kim2025genius}
+\citation{tay2022dsi,decao2021genre}
+\citation{lee2022rqvae}
+\citation{rajput2023tiger}
+\citation{pradeep2023scale}
+\citation{kim2025genius}
+\citation{radford2021clip}
+\citation{raffel2020t5}
+\citation{decao2021genre}
+\citation{wei2024uniir}
+\citation{vandenoord2017vqvae}
+\citation{zhang2023regularizedvq}
+\citation{mentzer2024fsq}
+\citation{wang2024letter}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Related Work}{2}}
+\newlabel{sec:background}{{2}{2}}
+\citation{kim2025genius}
+\citation{lin2014mscoco}
+\citation{liu2021visualnews}
+\citation{wu2021fashioniq}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Experimental Setup}{3}}
+\newlabel{sec:setup}{{3}{3}}
+\@writefile{toc}{\contentsline {paragraph}{Testbed.}{3}}
+\@writefile{toc}{\contentsline {paragraph}{Datasets as contrasting regimes.}{3}}
+\@writefile{toc}{\contentsline {paragraph}{Pipeline and controls.}{3}}
+\citation{pradeep2023scale}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Recall@1 by dataset and balance strength $\lambda $, mean $\pm $ std across seeds. Dir.\ A = text$\to $image (MSCOCO, VisualNews) / (image,text)$\to $image (FashionIQ); Dir.\ B = image$\to $text (MSCOCO, VisualNews only). MSCOCO vanilla/strong: $n{=}5$ seeds; all other rows: $n{=}3$ seeds. Both MSCOCO's and VisualNews's vanilla-vs-strong Dir.\ A differences are significant under Welch's $t$-test (Section\nobreakspace  {}4\hbox {}).}}{4}}
+\newlabel{tab:main}{{1}{4}}
+\@writefile{toc}{\contentsline {paragraph}{Scope: relative effects under a fixed, non-SOTA-reproducing pipeline.}{4}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Finding 1: Balance Regularization Does Not Consistently Improve Retrieval}{5}}
+\newlabel{sec:finding1}{{4}{5}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Finding 2: The Effect Differs Substantially Across Retrieval Direction}{5}}
+\newlabel{sec:finding2}{{5}{5}}
+\@writefile{toc}{\contentsline {paragraph}{A natural fix -- decoupling regularization per target modality -- fails architecturally.}{5}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Localizing both effects to the tokenizer (MSCOCO). The dense probe is cosine similarity over the frozen RQ's quantized embedding -- no decoder, no beam search, no trie -- run on the single Stage-1 checkpoint per variant shared by all decoder seeds; ``real'' columns repeat Table\nobreakspace  {}1\hbox {}'s multi-seed pipeline means for comparison.}}{6}}
+\newlabel{tab:localization}{{2}{6}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Finding 3: The Effect Originates at the Tokenizer Level and Does Not Transfer Consistently}{6}}
+\newlabel{sec:finding3}{{6}{6}}
+\@writefile{toc}{\contentsline {paragraph}{Localizing both effects to the tokenizer, before decoder training.}{6}}
+\@writefile{toc}{\contentsline {paragraph}{VisualNews: the collapse generalizes, the gain reverses -- both localize the same way.}{6}}
+\citation{ethayarajh2019anisotropy}
+\@writefile{toc}{\contentsline {paragraph}{No structural metric predicts Recall consistently across datasets.}{7}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Limitations and Conclusion}{7}}
+\newlabel{sec:limitations}{{7}{7}}
+\@writefile{toc}{\contentsline {paragraph}{Limitations.}{7}}
+\bibstyle{splncs04}
+\bibdata{references}
+\bibcite{decao2021genre}{1}
+\bibcite{ethayarajh2019anisotropy}{2}
+\bibcite{kim2025genius}{3}
+\bibcite{lee2022rqvae}{4}
+\bibcite{lin2014mscoco}{5}
+\bibcite{liu2021visualnews}{6}
+\bibcite{mentzer2024fsq}{7}
+\bibcite{vandenoord2017vqvae}{8}
+\bibcite{pradeep2023scale}{9}
+\bibcite{radford2021clip}{10}
+\@writefile{toc}{\contentsline {paragraph}{Conclusion.}{8}}
+\@writefile{toc}{\contentsline {paragraph}{Code and data.}{8}}
+\bibcite{raffel2020t5}{11}
+\bibcite{rajput2023tiger}{12}
+\bibcite{tay2022dsi}{13}
+\bibcite{wang2024letter}{14}
+\bibcite{wei2024uniir}{15}
+\bibcite{wu2021fashioniq}{16}
+\bibcite{zhang2023regularizedvq}{17}
