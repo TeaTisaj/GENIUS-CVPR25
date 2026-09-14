@@ -4,7 +4,7 @@ FashionIQ.
 
 WHY THIS SCRIPT EXISTS (2026-09-04): the r-values previously reported in the paper
 (MSCOCO collision r=+0.79, FashionIQ collision r=-0.70, FashionIQ utilization r=+0.90)
-were computed ad hoc in a chat session, persisted only as `correlation_table.csv` inside
+were computed ad hoc, persisted only as `correlation_table.csv` inside
 the rq_analysis_* output dirs, and then NEVER recomputed after the seed-2023 re-eval
 correction (2026-07-11) changed MSCOCO's headline Recall vector (vanilla 14.08 -> 20.86).
 The stale values survived four audit rounds and two independent fact-check passes,
